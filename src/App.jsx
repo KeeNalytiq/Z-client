@@ -796,6 +796,38 @@ const SPECIFIC_ARTICLE_PATHS = {
   }
 };
 
+function formatSourceTitle(s, appName) {
+  if (s.title && typeof s.title === "string" && s.title.trim().length > 3) {
+    let clean = s.title.replace(/\s*[-|]\s*Zoho\s*Cares.*$/i, "").replace(/\s*[-|]\s*Zoho Help.*$/i, "").trim();
+    if (clean.length > 3) return clean;
+  }
+  if (s.url && s.url.includes("google.com/search")) {
+    return `Search Official ${appName || "Zoho"} Help Portal`;
+  }
+  if (s.url && s.url.includes("developer/docs")) {
+    return `${appName || "Zoho"} Developer & API Reference Documentation`;
+  }
+  if (s.url && s.url.includes("community")) {
+    return `${appName || "Zoho"} Official Community Forum`;
+  }
+  return `${appName || "Zoho"} Official Help Documentation`;
+}
+
+function formatSourceUrl(urlStr) {
+  if (!urlStr) return "help.zoho.com";
+  let cleaned = urlStr.replace(/^https?:\/\//, "");
+  if (cleaned.includes("google.com/search")) {
+    return "help.zoho.com (Live Search)";
+  }
+  try {
+    cleaned = decodeURIComponent(cleaned);
+  } catch { /* proceed */ }
+  if (cleaned.length > 45) {
+    return cleaned.slice(0, 42) + "…";
+  }
+  return cleaned;
+}
+
 function generateDynamicHelpSources({ query, appName, groundingSources = [] }) {
   const detectedApp = appName || autoDetectZohoApp(query) || "Zoho CRM";
   const slug = APP_SLUG_MAP[detectedApp] || "crm";
@@ -806,12 +838,11 @@ function generateDynamicHelpSources({ query, appName, groundingSources = [] }) {
   // 1. Process grounding sources returned by live web search
   for (const g of groundingSources) {
     if (g.url && !finalSources.some(s => s.url === g.url)) {
-      let cleanTitle = g.title || `Official ${detectedApp} Help Documentation`;
-      cleanTitle = cleanTitle.replace(/\s*[-|]\s*Zoho\s*Cares.*$/i, "").replace(/\s*[-|]\s*Zoho Help.*$/i, "").trim();
+      let cleanTitle = formatSourceTitle(g, detectedApp);
       finalSources.push({
         url: g.url,
-        title: cleanTitle || `${detectedApp} Official Help Article`,
-        badge: "Official Help"
+        title: cleanTitle,
+        badge: "Official Article"
       });
     }
   }
@@ -849,7 +880,7 @@ function generateDynamicHelpSources({ query, appName, groundingSources = [] }) {
         });
       }
     } else {
-      const topicSearchUrl = `https://help.zoho.com/portal/en/kb/search?query=${encodeURIComponent(topic.searchQ)}+${slug}`;
+      const topicSearchUrl = `https://help.zoho.com/portal/en/kb/zoho/${slug}`;
       if (!finalSources.some(s => s.url === topicSearchUrl)) {
         finalSources.push({
           url: topicSearchUrl,
@@ -865,9 +896,9 @@ function generateDynamicHelpSources({ query, appName, groundingSources = [] }) {
   if (query && query.trim().length > 3) {
     const cleanQuery = query.replace(/[^\w\s]/gi, ' ').trim();
     const searchKeywords = encodeURIComponent(`${detectedApp} ${cleanQuery}`);
-    const displayTitle = query.length > 40 ? query.slice(0, 40) + "…" : query;
+    const displayTitle = query.length > 38 ? query.slice(0, 38) + "…" : query;
 
-    const directSearchUrl = `https://www.google.com/search?q=site%3Ahelp.zoho.com+${searchKeywords}`;
+    const directSearchUrl = `https://help.zoho.com/portal/en/search?searchModule=kb&query=${searchKeywords}`;
     if (!finalSources.some(s => s.url === directSearchUrl)) {
       finalSources.push({
         url: directSearchUrl,
@@ -888,7 +919,7 @@ function generateDynamicHelpSources({ query, appName, groundingSources = [] }) {
   }
 
   const communityUrl = `https://help.zoho.com/portal/en/community/zoho-${slug}`;
-  if (finalSources.length < 5 && !finalSources.some(s => s.url === communityUrl)) {
+  if (finalSources.length < 6 && !finalSources.some(s => s.url === communityUrl)) {
     finalSources.push({
       url: communityUrl,
       title: `${detectedApp} Official Community & Support Forum`,
@@ -1378,16 +1409,21 @@ function JrSMEResponseView({ answer }) {
             <ExternalLink size={13} /> Official Help Documentation Sources ({answer.sources.length})
           </div>
           <div className="jr-sources-grid">
-            {answer.sources.map((s, i) => (
-              <a key={i} href={s.url} target="_blank" rel="noreferrer" className="jr-source-card">
-                <div className="jr-source-card-header">
-                  <span className="jr-source-tag">{s.badge || "Official Help"}</span>
-                  <ExternalLink size={12} className="jr-source-ext" />
-                </div>
-                <div className="jr-source-title">{s.title || s.url}</div>
-                <div className="jr-source-url">{s.url.replace(/^https?:\/\//, "")}</div>
-              </a>
-            ))}
+            {answer.sources.map((s, i) => {
+              const displayTitle = formatSourceTitle(s, s.appName || "Zoho");
+              const displayUrl = formatSourceUrl(s.url);
+              return (
+                <a key={i} href={s.url} target="_blank" rel="noreferrer" className="jr-source-card">
+                  <div className="jr-source-card-header">
+                    <span className="jr-source-tag">{s.badge || "Official Guide"}</span>
+                    <ExternalLink size={13} className="jr-source-ext" />
+                  </div>
+                  <div className="jr-source-title">{displayTitle}</div>
+                  <div className="jr-source-url">{displayUrl}</div>
+                </a>
+              );
+            })}
+
           </div>
         </div>
       )}
@@ -1486,6 +1522,15 @@ export default function CXResponseGenerator() {
     }, 1600);
     return () => clearTimeout(minDisplay);
   }, [loaded]);
+
+  useEffect(() => {
+    const isDark = prefs.theme === "dark";
+    document.documentElement.classList.toggle("cx-theme-dark", isDark);
+    document.body.classList.toggle("cx-theme-dark", isDark);
+    document.body.style.backgroundColor = isDark ? "#0D0E1A" : "#F5F6FB";
+    document.body.style.color = isDark ? "#ECEBF5" : "#16151F";
+  }, [prefs.theme]);
+
 
   const addKeywordChip = (kw) => {
     setInput(prev => (prev.trim() ? `${prev.trim()}, ${kw}` : kw));
@@ -2171,24 +2216,26 @@ export default function CXResponseGenerator() {
           display: flex; align-items: center; gap: 6px;
         }
         .jr-sources-grid {
-          display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px;
+          display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 12px;
         }
         .jr-source-card {
           display: flex; flex-direction: column; justify-content: space-between;
-          padding: 12px 14px; border-radius: 12px; border: 1px solid var(--hairline);
+          padding: 14px 16px; border-radius: 14px; border: 1px solid var(--hairline);
           background: var(--panel-solid); text-decoration: none; color: inherit;
-          transition: all 0.18s ease; box-shadow: 0 6px 16px -14px var(--shadow-color);
+          min-height: 110px; box-shadow: 0 6px 16px -14px var(--shadow-color);
+          transition: all 0.2s ease; overflow: hidden;
         }
         .jr-source-card:hover {
           border-color: var(--accent); transform: translateY(-2px);
           box-shadow: 0 12px 24px -14px var(--shadow-color);
         }
-        .jr-source-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
-        .jr-source-tag { font-size: 10px; font-weight: 700; color: var(--accent-deep); background: var(--accent-soft); padding: 2px 7px; border-radius: 999px; }
+        .jr-source-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+        .jr-source-tag { font-size: 10.5px; font-weight: 700; color: var(--accent-deep); background: var(--accent-soft); padding: 3px 9px; border-radius: 999px; }
         .jr-source-ext { color: var(--ink-soft); transition: color 0.15s; }
         .jr-source-card:hover .jr-source-ext { color: var(--accent); }
-        .jr-source-title { font-weight: 600; font-size: 12.5px; color: var(--ink); line-height: 1.4; margin-bottom: 4px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-        .jr-source-url { font-size: 11px; color: var(--ink-soft); word-break: break-all; }
+        .jr-source-title { font-weight: 700; font-size: 13px; color: var(--ink); line-height: 1.45; margin-bottom: 6px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; text-overflow: ellipsis; }
+        .jr-source-url { font-size: 11px; color: var(--ink-soft); font-family: monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
 
         /* ---------- Skeleton Loader ---------- */
         .jr-skeleton-container { display: flex; flex-direction: column; gap: 14px; padding: 10px 0; }
