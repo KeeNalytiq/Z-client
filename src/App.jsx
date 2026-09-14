@@ -950,13 +950,16 @@ ${scopedUrl ? `- Focus your search under ${scopedUrl} and official help.zoho.com
   [1-2 sentences direct summary answer]
 
   ### 📋 Step-by-Step Solution
-  [Numbered list (1., 2., 3.) with exact UI navigation paths highlighted using > separator, e.g. Setup > Customization > Modules and Fields]
+  [Numbered list (1., 2., 3.) with exact UI navigation paths highlighted using > separator, e.g. Setup > Customization > Modules and Fields.
+  CRITICAL CODE & JSON RULE: If the solution includes any JSON payload, API parameter, code snippet, or Deluge script, you MUST put it inside a Markdown code block with explicit language tags: \`\`\`json for JSON, \`\`\`deluge for Deluge code, \`\`\`javascript for JavaScript.]
+
 
   ### 💡 Key Notes & Requirements
   [Prerequisites, permissions required, or important caveats]
 
   ### 💬 Suggested Customer Response
   [A ready-to-send, polite, customer-facing email response that the engineer can copy and send directly to the customer]
+
 
 - Preserve exact navigation steps, field names, and menu labels as documented in official Zoho help.
 - Do not invent or guess steps. Skip generic disclaimers.`;
@@ -1174,13 +1177,69 @@ function parseMarkdownContentBlocks(contentStr) {
     const trimmed = line.trim();
     if (!trimmed) continue;
 
+    // Detect raw JSON object or array spanning multiple lines
+    if ((trimmed.startsWith("{") && !trimmed.endsWith("}")) || (trimmed.startsWith("[") && !trimmed.endsWith("]"))) {
+      let jsonAcc = [line];
+      let depth = (trimmed.match(/[\{\[]/g) || []).length - (trimmed.match(/[\}\]]/g) || []).length;
+      while (i + 1 < lines.length && depth > 0) {
+        i++;
+        const nextL = lines[i];
+        jsonAcc.push(nextL);
+        const t = nextL.trim();
+        depth += (t.match(/[\{\[]/g) || []).length - (t.match(/[\}\]]/g) || []).length;
+      }
+      const rawJson = jsonAcc.join("\n");
+      try {
+        const formatted = JSON.stringify(JSON.parse(rawJson), null, 2);
+        blocks.push({ type: "code", lang: "json", code: formatted });
+      } catch {
+        blocks.push({ type: "code", lang: "json", code: rawJson });
+      }
+      continue;
+    }
+
+    // Detect Deluge code pattern (info zoho.crm..., response = zoho..., etc.)
+    if (trimmed.startsWith("info zoho.") || trimmed.startsWith("response = zoho.") || trimmed.startsWith("zoho.crm.") || trimmed.startsWith("void custom_")) {
+      let delugeLines = [line];
+      while (i + 1 < lines.length && (lines[i + 1].trim().startsWith("info ") || lines[i + 1].trim().includes("zoho.") || lines[i + 1].trim().includes(";"))) {
+        i++;
+        delugeLines.push(lines[i]);
+      }
+      blocks.push({ type: "code", lang: "deluge", code: delugeLines.join("\n") });
+      continue;
+    }
+
     const stepMatch = trimmed.match(/^(\d+)[\.\)]\s+(.+)$/);
     const bulletMatch = trimmed.match(/^[\-\*]\s+(.+)$/);
 
     if (stepMatch) {
-      blocks.push({ type: "step", num: stepMatch[1], text: stepMatch[2] });
+      const text = stepMatch[2];
+      const jsonInStep = text.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
+      if (jsonInStep && (text.includes(":") || text.includes('"'))) {
+        try {
+          const parsed = JSON.parse(jsonInStep[1]);
+          const formatted = JSON.stringify(parsed, null, 2);
+          const textBefore = text.slice(0, jsonInStep.index).trim();
+          blocks.push({ type: "step", num: stepMatch[1], text: textBefore || "Follow this specification:" });
+          blocks.push({ type: "code", lang: "json", code: formatted });
+          continue;
+        } catch { /* standard step */ }
+      }
+      blocks.push({ type: "step", num: stepMatch[1], text });
     } else if (bulletMatch) {
-      blocks.push({ type: "bullet", text: bulletMatch[1] });
+      const text = bulletMatch[1];
+      const jsonInBullet = text.match(/(\{[\s\S]*\}|\[[\s\S]*\])/);
+      if (jsonInBullet && (text.includes(":") || text.includes('"'))) {
+        try {
+          const parsed = JSON.parse(jsonInBullet[1]);
+          const formatted = JSON.stringify(parsed, null, 2);
+          const textBefore = text.slice(0, jsonInBullet.index).trim();
+          blocks.push({ type: "bullet", text: textBefore || "Payload specification:" });
+          blocks.push({ type: "code", lang: "json", code: formatted });
+          continue;
+        } catch { /* standard bullet */ }
+      }
+      blocks.push({ type: "bullet", text });
     } else {
       blocks.push({ type: "paragraph", text: trimmed });
     }
@@ -1196,6 +1255,7 @@ function parseMarkdownContentBlocks(contentStr) {
 
   return blocks;
 }
+
 
 function CodeBlockView({ lang, code }) {
   const [copied, setCopied] = useState(false);
@@ -1270,7 +1330,68 @@ function JrSMEJsonViewer({ jsonInfo }) {
   );
 }
 
-function JrSMEResponseView({ answer }) {
+function renderSectionCard(sec, sIdx) {
+  if (!sec || !sec.content) return null;
+
+  const isSummary = sec.title.toLowerCase().includes("summary") || sec.title.toLowerCase().includes("overview");
+  const isSteps = sec.title.toLowerCase().includes("step") || sec.title.toLowerCase().includes("solution") || sec.title.toLowerCase().includes("fix");
+  const isNotes = sec.title.toLowerCase().includes("note") || sec.title.toLowerCase().includes("requirement") || sec.title.toLowerCase().includes("tip");
+
+  const blocks = parseMarkdownContentBlocks(sec.content);
+
+  return (
+    <div
+      key={sIdx}
+      className={`jr-section-card ${isSummary ? "jr-card-summary" : ""} ${isSteps ? "jr-card-steps" : ""} ${sec.isCustomerDraft ? "jr-card-customer" : ""} ${isNotes ? "jr-card-notes" : ""}`}
+    >
+      <div className="jr-section-title">
+        {isSummary && <Sparkles size={16} className="jr-sec-icon" />}
+        {isSteps && <ClipboardList size={16} className="jr-sec-icon" />}
+        {isNotes && <BookOpen size={16} className="jr-sec-icon" />}
+        {sec.isCustomerDraft && <HeartHandshake size={16} className="jr-sec-icon" />}
+        <span>{sec.title}</span>
+      </div>
+
+      <div className="jr-section-body">
+        {blocks.map((b, bIdx) => {
+          if (b.type === "code") {
+            return <CodeBlockView key={bIdx} lang={b.lang} code={b.code} />;
+          }
+
+          if (b.type === "step") {
+            return (
+              <div key={bIdx} className="jr-step-row">
+                <span className="jr-step-badge">{b.num}</span>
+                <div className="jr-step-text">
+                  <FormatInline text={b.text} />
+                </div>
+              </div>
+            );
+          }
+
+          if (b.type === "bullet") {
+            return (
+              <div key={bIdx} className="jr-bullet-row">
+                <span className="jr-bullet-dot" />
+                <div className="jr-bullet-text">
+                  <FormatInline text={b.text} />
+                </div>
+              </div>
+            );
+          }
+
+          return (
+            <p key={bIdx} className="jr-para">
+              <FormatInline text={b.text} />
+            </p>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function JrSMEResponseView({ answer, isFollowUp = false }) {
   const [copiedCustomerDraft, setCopiedCustomerDraft] = useState(false);
   const [copiedFull, setCopiedFull] = useState(false);
 
@@ -1313,93 +1434,57 @@ function JrSMEResponseView({ answer }) {
     }
   };
 
+  const summarySec = sections.find(s => s.title.toLowerCase().includes("summary") || s.title.toLowerCase().includes("overview")) || sections[0];
+  const stepsSec = sections.find(s => s.title.toLowerCase().includes("step") || s.title.toLowerCase().includes("solution") || s.title.toLowerCase().includes("fix"));
+  const notesSec = sections.find(s => s.title.toLowerCase().includes("note") || s.title.toLowerCase().includes("requirement") || s.title.toLowerCase().includes("tip"));
+  const customerSec = sections.find(s => s.isCustomerDraft || s.title.toLowerCase().includes("customer") || s.title.toLowerCase().includes("response"));
+
+  const leftSections = [summarySec, notesSec].filter(Boolean);
+  const rightSections = [stepsSec, customerSec].filter(Boolean);
+
+  const matchedTitles = new Set(leftSections.concat(rightSections).map(s => s?.title));
+  const extraSections = sections.filter(s => s && !matchedTitles.has(s.title));
+
   return (
     <div className="jr-response-container">
-      <div className="jr-response-header">
-        <div className="jr-badge-group">
-          <span className={`cx-mode-badge ${answer.mode === "search" ? "cx-mode-ai" : "cx-mode-template"}`}>
-            <Sparkles size={13} /> {answer.mode === "search" ? "Grounded in Official Help" : "Reference Knowledge Mode"}
-          </span>
-          {jsonOutput && <span className="jr-json-badge">JSON Format</span>}
-        </div>
-        <div className="jr-header-actions">
-          {customerDraftText && (
-            <button className="cx-action-btn jr-customer-draft-btn" onClick={handleCopyCustomerDraft} type="button">
-              {copiedCustomerDraft ? <Check size={14} /> : <ClipboardList size={14} />}
-              {copiedCustomerDraft ? "Customer Draft Copied!" : "Copy Customer Response"}
+      {!isFollowUp && (
+        <div className="jr-response-header">
+          <div className="jr-badge-group">
+            <span className={`cx-mode-badge ${answer.mode === "search" ? "cx-mode-ai" : "cx-mode-template"}`}>
+              <Sparkles size={13} /> {answer.mode === "search" ? "Grounded in Official Help" : "Reference Knowledge Mode"}
+            </span>
+            {jsonOutput && <span className="jr-json-badge">JSON Format</span>}
+          </div>
+          <div className="jr-header-actions">
+            {customerDraftText && (
+              <button className="cx-action-btn jr-customer-draft-btn" onClick={handleCopyCustomerDraft} type="button">
+                {copiedCustomerDraft ? <Check size={14} /> : <ClipboardList size={14} />}
+                {copiedCustomerDraft ? "Customer Draft Copied!" : "Copy Customer Response"}
+              </button>
+            )}
+            <button className="cx-action-btn" onClick={handleCopyFull} type="button">
+              {copiedFull ? <Check size={14} /> : <Copy size={14} />}
+              {copiedFull ? "Copied!" : "Copy Full Answer"}
             </button>
-          )}
-          <button className="cx-action-btn" onClick={handleCopyFull} type="button">
-            {copiedFull ? <Check size={14} /> : <Copy size={14} />}
-            {copiedFull ? "Copied!" : "Copy Full Answer"}
-          </button>
+          </div>
         </div>
-      </div>
+      )}
 
       {jsonOutput ? (
         <JrSMEJsonViewer jsonInfo={jsonOutput} />
       ) : (
-        <div className="jr-sections">
-          {sections.map((sec, sIdx) => {
-            if (!sec.content) return null;
-
-            const isSummary = sec.title.toLowerCase().includes("summary") || sec.title.toLowerCase().includes("overview");
-            const isSteps = sec.title.toLowerCase().includes("step") || sec.title.toLowerCase().includes("solution") || sec.title.toLowerCase().includes("fix");
-            const isNotes = sec.title.toLowerCase().includes("note") || sec.title.toLowerCase().includes("requirement") || sec.title.toLowerCase().includes("tip");
-
-            const blocks = parseMarkdownContentBlocks(sec.content);
-
-            return (
-              <div
-                key={sIdx}
-                className={`jr-section-card ${isSummary ? "jr-card-summary" : ""} ${isSteps ? "jr-card-steps" : ""} ${sec.isCustomerDraft ? "jr-card-customer" : ""} ${isNotes ? "jr-card-notes" : ""}`}
-              >
-                <div className="jr-section-title">
-                  {isSummary && <Sparkles size={16} className="jr-sec-icon" />}
-                  {isSteps && <ClipboardList size={16} className="jr-sec-icon" />}
-                  {isNotes && <BookOpen size={16} className="jr-sec-icon" />}
-                  {sec.isCustomerDraft && <HeartHandshake size={16} className="jr-sec-icon" />}
-                  <span>{sec.title}</span>
-                </div>
-
-                <div className="jr-section-body">
-                  {blocks.map((b, bIdx) => {
-                    if (b.type === "code") {
-                      return <CodeBlockView key={bIdx} lang={b.lang} code={b.code} />;
-                    }
-
-                    if (b.type === "step") {
-                      return (
-                        <div key={bIdx} className="jr-step-row">
-                          <span className="jr-step-badge">{b.num}</span>
-                          <div className="jr-step-text">
-                            <FormatInline text={b.text} />
-                          </div>
-                        </div>
-                      );
-                    }
-
-                    if (b.type === "bullet") {
-                      return (
-                        <div key={bIdx} className="jr-bullet-row">
-                          <span className="jr-bullet-dot" />
-                          <div className="jr-bullet-text">
-                            <FormatInline text={b.text} />
-                          </div>
-                        </div>
-                      );
-                    }
-
-                    return (
-                      <p key={bIdx} className="jr-para">
-                        <FormatInline text={b.text} />
-                      </p>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })}
+        <div className="jr-grid-2col">
+          <div className="jr-col-left">
+            {leftSections.map((sec, idx) => renderSectionCard(sec, `l_${idx}`))}
+          </div>
+          <div className="jr-col-right">
+            {rightSections.map((sec, idx) => renderSectionCard(sec, `r_${idx}`))}
+          </div>
+          {extraSections.length > 0 && (
+            <div className="jr-col-left" style={{ gridColumn: "1 / -1" }}>
+              {extraSections.map((sec, idx) => renderSectionCard(sec, `e_${idx}`))}
+            </div>
+          )}
         </div>
       )}
 
@@ -1423,13 +1508,148 @@ function JrSMEResponseView({ answer }) {
                 </a>
               );
             })}
-
           </div>
         </div>
       )}
     </div>
   );
 }
+
+function JrSMEFollowUpChat({ originalQuery, originalAnswer, appName }) {
+  const [followUps, setFollowUps] = useState([]);
+  const [question, setQuestion] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleSendFollowUp = async (e) => {
+    if (e) e.preventDefault();
+    if (!question.trim() || loading) return;
+
+    const doubtText = question.trim();
+    setQuestion("");
+    setError("");
+    setLoading(true);
+
+    try {
+      const prompt = `You are "Jr SME", an expert SaaS support engineer assisting a colleague.
+Original User Context:
+- Zoho App: ${appName || "Zoho"}
+- Original Question: "${originalQuery}"
+- Primary Solution Provided:
+${originalAnswer?.text || ""}
+
+The support engineer has a follow-up doubt or question about this solution:
+"${doubtText}"
+
+Instructions:
+- Provide a direct, crystal-clear explanation or code snippet to resolve their doubt.
+- CRITICAL: If code, Deluge script, or JSON payload is involved, format it inside explicit markdown code blocks with language tags like \`\`\`json, \`\`\`deluge, \`\`\`javascript.
+
+- Structure your answer with clear subheadings (### 💡 Explanation, ### 📋 Code / Guidance).`;
+
+      let answerText = "";
+      let rawSources = [];
+
+      try {
+        const response = await fetch("/api/gemini", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: "gemini-3.6-flash",
+            contents: [{ role: "user", parts: [{ text: prompt }] }],
+            tools: [{ google_search: {} }],
+          }),
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          const extracted = extractAnswerAndSources(data.candidates?.[0]);
+          answerText = extracted.text;
+          rawSources = extracted.sources;
+        }
+      } catch { /* fallback below */ }
+
+      if (!answerText) {
+        const fallbackResp = await fetch("/api/gemini", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: "gemini-3.6-flash",
+            contents: [{ role: "user", parts: [{ text: prompt }] }],
+          }),
+        });
+        if (fallbackResp.ok) {
+          const data = await fallbackResp.json();
+          answerText = (data.candidates?.[0]?.content?.parts || []).map(p => p.text || "").join("").trim();
+        }
+      }
+
+      if (!answerText) throw new Error("Failed to get answer for doubt.");
+
+      const dynamicSources = generateDynamicHelpSources({ query: doubtText, appName, groundingSources: rawSources });
+
+      setFollowUps(prev => [
+        ...prev,
+        {
+          id: `fu_${Date.now()}`,
+          question: doubtText,
+          answer: answerText,
+          sources: dynamicSources
+        }
+      ]);
+    } catch {
+      setError("Failed to get answer for your doubt. Please try asking again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="jr-followup-container">
+      <div className="jr-followup-header">
+        <Sparkles size={16} className="jr-sec-icon" />
+        <span>Ask Follow-up Doubts & Request Code Clarifications (ChatGPT Style)</span>
+      </div>
+
+      {followUps.map((fu) => (
+        <div key={fu.id} className="jr-followup-item">
+          <div className="jr-user-doubt-card">
+            <span className="jr-doubt-badge">Support Engineer's Doubt</span>
+            <div className="jr-doubt-text">{fu.question}</div>
+          </div>
+          <div className="jr-sme-answer-card">
+            <JrSMEResponseView answer={{ text: fu.answer, sources: fu.sources, mode: "search" }} isFollowUp={true} />
+          </div>
+        </div>
+      ))}
+
+      {loading && (
+        <div className="jr-followup-loading">
+          <Sparkles size={16} className="jr-sec-icon animate-pulse" />
+          <span>Jr SME is researching official docs and generating code/solution...</span>
+        </div>
+      )}
+
+      {error && <div className="cx-error">{error}</div>}
+
+      <form onSubmit={handleSendFollowUp} className="jr-followup-form">
+        <input
+          type="text"
+          value={question}
+          onChange={(e) => setQuestion(e.target.value)}
+          placeholder="Ask a doubt about this answer (e.g., 'Explain step 2 further', 'Write a Deluge function for this workflow', 'Show JSON payload')..."
+          className="jr-followup-input"
+          disabled={loading}
+        />
+        <button type="submit" className="cx-btn-primary jr-followup-btn" disabled={loading || !question.trim()}>
+          <Send size={15} />
+          <span>Ask Doubt</span>
+        </button>
+      </form>
+    </div>
+  );
+}
+
 
 function JrSMESkeleton() {
   return (
@@ -2079,6 +2299,63 @@ export default function CXResponseGenerator() {
         }
 
         .jr-sections { display: flex; flex-direction: column; gap: 14px; }
+        .jr-grid-2col {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 16px;
+          align-items: start;
+        }
+        @media (max-width: 860px) {
+          .jr-grid-2col {
+            grid-template-columns: 1fr;
+          }
+        }
+        .jr-col-left, .jr-col-right {
+          display: flex; flex-direction: column; gap: 16px;
+        }
+
+        .jr-followup-container {
+          margin-top: 22px; padding-top: 18px;
+          border-top: 1px solid var(--hairline);
+          display: flex; flex-direction: column; gap: 14px;
+        }
+        .jr-followup-header {
+          display: flex; align-items: center; gap: 8px;
+          font-family: 'Manrope', sans-serif; font-weight: 700; font-size: 14px;
+          color: var(--ink);
+        }
+        .jr-followup-item {
+          display: flex; flex-direction: column; gap: 10px;
+          animation: jr-fade-in 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+        .jr-user-doubt-card {
+          background: var(--accent-soft); border: 1px solid rgba(156,141,255,0.25);
+          border-radius: 14px; padding: 12px 16px;
+        }
+        .jr-doubt-badge {
+          display: inline-block; font-size: 10.5px; font-weight: 700;
+          color: var(--accent-deep); text-transform: uppercase; letter-spacing: 0.03em;
+          margin-bottom: 4px;
+        }
+        .jr-doubt-text { font-size: 13.5px; font-weight: 600; color: var(--ink); line-height: 1.5; }
+        .jr-sme-answer-card {
+          border-left: 3px solid var(--accent); padding-left: 10px; margin-left: 6px;
+        }
+        .jr-followup-form {
+          display: flex; gap: 10px; margin-top: 6px; flex-wrap: wrap;
+        }
+        .jr-followup-input {
+          flex: 1; min-width: 240px; border: 1px solid var(--hairline); border-radius: 12px;
+          padding: 10px 14px; font-size: 13.5px; background: var(--field-bg);
+          color: var(--ink); font-family: inherit; transition: border-color 0.15s, box-shadow 0.15s;
+        }
+        .jr-followup-input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+        .jr-followup-btn { flex-shrink: 0; padding: 10px 18px; margin-top: 0; }
+        .jr-followup-loading {
+          display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-soft);
+          padding: 8px 0;
+        }
+
 
         .jr-section-card {
           border: 1px solid var(--hairline);
@@ -2524,8 +2801,12 @@ export default function CXResponseGenerator() {
               )}
               {jrLoading && <JrSMESkeleton />}
               {jrAnswer && !jrLoading && (
-                <JrSMEResponseView answer={jrAnswer} />
+                <>
+                  <JrSMEResponseView answer={jrAnswer} />
+                  <JrSMEFollowUpChat originalQuery={jrQuery} originalAnswer={jrAnswer} appName={jrApp} />
+                </>
               )}
+
             </div>
 
             {jrHistory.length > 0 && (
