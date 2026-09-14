@@ -2043,7 +2043,7 @@ export default function CXResponseGenerator() {
           color-scheme: dark;
         }
 
-        .cx-shell { max-width: 1180px; margin: 0 auto; }
+        .cx-shell { max-width: 1400px; margin: 0 auto; }
 
         /* ---------- Header ---------- */
         .cx-header {
@@ -2077,8 +2077,11 @@ export default function CXResponseGenerator() {
         .cx-switch::after { content:''; position:absolute; top:2.5px; left:2.5px; width:18px; height:18px; border-radius:50%; background:#fff; box-shadow:0 1px 3px rgba(0,0,0,0.3); transition:left .2s; }
         .cx-switch.on::after { left:19.5px; }
 
-        .cx-grid { display:grid; grid-template-columns: 380px 1fr; gap:22px; align-items:start; }
-        @media (max-width: 860px) { .cx-grid { grid-template-columns: 1fr; } }
+        .cx-grid { display:grid; grid-template-columns: minmax(360px, 2fr) minmax(0, 3fr); gap:24px; align-items:start; }
+        @media (max-width: 960px) { .cx-grid { grid-template-columns: 1fr; } }
+        /* Jr SME full-width answer layout: left ask panel + right scrollable answer */
+        .cx-grid-jrsme { display:grid; grid-template-columns: minmax(320px, 1.5fr) minmax(0, 4fr); gap:24px; align-items:start; }
+        @media (max-width: 960px) { .cx-grid-jrsme { grid-template-columns: 1fr; } }
 
         .cx-panel {
           background: var(--panel);
@@ -2096,6 +2099,13 @@ export default function CXResponseGenerator() {
 
         .cx-textarea { width:100%; min-height:150px; resize:vertical; border:1px solid var(--hairline); border-radius:12px; padding:12px 13px; font-family:inherit; font-size:14px; line-height:1.55; color:var(--ink); background:var(--field-bg); transition: border-color .15s, box-shadow .15s; }
         .cx-textarea:focus { outline:none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+        .cx-textarea.tall { min-height:220px; }
+        /* dark-mode textarea */
+        .cx-theme-dark .cx-textarea, .cx-theme-dark .generated-response-edit { background: var(--field-bg); color: var(--ink); border-color: var(--hairline); }
+        .cx-theme-dark .cx-template-edit-input { background: var(--field-bg); color: var(--ink); border-color: var(--hairline); }
+        .cx-theme-dark .cx-modal { background: var(--panel-solid); color: var(--ink); }
+        .cx-theme-dark .cx-modal h3 { color: var(--ink); }
+        .cx-theme-dark .cx-btn-secondary { background: var(--panel-solid); color: var(--ink); border-color: var(--hairline); }
         .cx-textarea::placeholder { color: var(--ink-soft); opacity:0.75; }
 
         .cx-chips { display:flex; flex-wrap:wrap; gap:7px; margin: 4px 0 18px 0; }
@@ -2164,10 +2174,20 @@ export default function CXResponseGenerator() {
         .cx-theme-dark .generated-response { background:#1E1F31; color:#ECEBF5; border:1px solid rgba(255,255,255,0.08); }
         .generated-response-edit { font-family: Verdana, sans-serif; font-size: 10px; line-height: 1.5; text-align: justify; color: #000000; width:100%; min-height:90px; border:1px solid var(--hairline); border-radius:10px; padding:12px; resize:vertical; background:#fff; }
         .cx-theme-dark .generated-response-edit { background:#1E1F31; color:#ECEBF5; border-color:var(--hairline); }
-        .cx-theme-dark .cx-search-input { background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' fill='none' stroke='%239B99B0' stroke-width='2' viewBox='0 0 24 24'><circle cx='11' cy='11' r='8'/><line x1='21' y1='21' x2='16.65' y2='16.65'/></svg>"); }
-        .cx-theme-dark .cx-chip { color:var(--ink-soft); background:var(--field-bg); }
-        .cx-theme-dark .cx-tab { background:var(--panel-solid); }
+        /* Full dark-theme overrides */
+        .cx-theme-dark .cx-search-input { background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' fill='none' stroke='%239B99B0' stroke-width='2' viewBox='0 0 24 24'><circle cx='11' cy='11' r='8'/><line x1='21' y1='21' x2='16.65' y2='16.65'/></svg>"); color: var(--ink); background-color: var(--field-bg); border-color: var(--hairline); }
+        .cx-theme-dark .cx-chip { color:var(--ink-soft); background:var(--field-bg); border-color: var(--hairline); }
+        .cx-theme-dark .cx-chip:hover { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+        .cx-theme-dark .cx-tab { background:var(--panel-solid); color: var(--ink-soft); border-color: var(--hairline); }
+        .cx-theme-dark .cx-tab:hover { border-color: var(--accent); color: var(--accent); }
         .cx-theme-dark option { background-color: #171829; color: #ECEBF5; }
+        .cx-theme-dark .cx-select { background-color: var(--field-bg); color: var(--ink); border-color: var(--hairline); }
+        .cx-theme-dark .cx-card { background: var(--panel-solid); border-color: var(--hairline); }
+        .cx-theme-dark .cx-template-item { background: var(--panel-solid); border-color: var(--hairline); }
+        .cx-theme-dark .cx-history-item { background: var(--panel-solid); border-color: var(--hairline); }
+        .cx-theme-dark .cx-action-btn { background: var(--panel-solid); border-color: var(--hairline); color: var(--ink); }
+        .cx-theme-dark .cx-card-btn { background: var(--panel-solid); border-color: var(--hairline); color: var(--ink-soft); }
+        .cx-theme-dark .cx-cat-chip { background: var(--panel-solid); border-color: var(--hairline); color: var(--ink-soft); }
         .cx-theme-dark .jr-card-summary { background: linear-gradient(135deg, rgba(156,141,255,0.14), #171829); border-color: rgba(156,141,255,0.32); }
         .cx-theme-dark .jr-card-notes { background: linear-gradient(135deg, rgba(255,148,120,0.14), #171829); border-color: rgba(255,148,120,0.32); }
         .cx-theme-dark .jr-card-customer { background: linear-gradient(135deg, rgba(63,220,182,0.14), #171829); border-color: rgba(63,220,182,0.32); }
@@ -2175,6 +2195,19 @@ export default function CXResponseGenerator() {
         .cx-theme-dark .jr-step-row { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.08); }
         .cx-theme-dark .jr-source-card { background: #171829; border-color: rgba(255,255,255,0.10); }
         .cx-theme-dark .jr-source-card:hover { border-color: var(--accent); background: #1E2038; }
+        .cx-theme-dark .jr-followup-input { background: var(--field-bg); color: var(--ink); border-color: var(--hairline); }
+        .cx-theme-dark .jr-user-doubt-card { background: var(--accent-soft); border-color: rgba(156,141,255,0.25); }
+        .cx-theme-dark .jr-section-card { background: var(--panel-solid); border-color: var(--hairline); }
+        .cx-theme-dark .cx-settings-panel { background: var(--panel-solid); border-color: var(--hairline); }
+        .cx-theme-dark .cx-modal-backdrop { background: rgba(0,0,0,0.7); }
+        .cx-theme-dark .cx-modal { background: var(--panel-solid); border-color: var(--hairline); }
+        .cx-theme-dark .jr-followup-container { border-color: var(--hairline); }
+        .cx-theme-dark .jr-response-container { color: var(--ink); }
+        .cx-theme-dark .jr-json-card { background: var(--panel-solid); border-color: var(--hairline); }
+        .cx-theme-dark .jr-json-header { border-color: var(--hairline-soft); }
+        .cx-theme-dark .cx-empty { border-color: var(--hairline); color: var(--ink-soft); }
+        .cx-theme-dark .cx-panel { background: var(--panel); border-color: var(--hairline); }
+        .cx-theme-dark .jr-code { background: rgba(156,141,255,0.15); color: #C5BCFF; }
 
         .cx-card-actions { display:flex; gap:8px; margin-top:13px; flex-wrap:wrap; }
         .cx-card-btn { display:inline-flex; align-items:center; gap:5px; font-size:12px; font-weight:500; padding:6px 11px; border-radius:9px; border:1px solid var(--hairline); background:var(--panel-solid); color:var(--ink-soft); cursor:pointer; transition: all .15s; }
@@ -2762,17 +2795,32 @@ export default function CXResponseGenerator() {
         )}
 
         {appView === "jrsme" && (
-        <div className="cx-grid">
-          {/* LEFT: ask panel */}
-          <div className="cx-panel">
+        <div className="cx-grid-jrsme">
+          {/* LEFT: ask panel — wider, better use of space */}
+          <div className="cx-panel" style={{ position: "sticky", top: 24 }}>
+            <div style={{ marginBottom: 14 }}>
+              <span style={{ fontFamily: "'Manrope',sans-serif", fontWeight: 800, fontSize: 16, color: "var(--ink)" }}>Jr SME Assistant</span>
+              <p style={{ fontSize: 12.5, color: "var(--ink-soft)", margin: "4px 0 0 0", lineHeight: 1.5 }}>Ask any Zoho product question. Jr SME will search official help docs and give you a structured solution.</p>
+            </div>
+
             <Field label="Describe the issue or question, in your own words">
               <textarea
-                className="cx-textarea"
+                className="cx-textarea tall"
                 value={jrQuery}
                 onChange={e => setJrQuery(e.target.value)}
                 placeholder="Example: Customer says custom fields aren't showing up when they import leads in Zoho CRM — how do I fix the mapping?"
               />
             </Field>
+
+            {/* Quick topic chips to help fill out the question */}
+            <div style={{ marginBottom: 14 }}>
+              <div className="cx-field-label" style={{ marginBottom: 6 }}>Quick Topics</div>
+              <div className="cx-chips" style={{ margin: 0 }}>
+                {["Import / Export", "Custom Fields", "Workflow Automation", "Email Setup", "Roles & Permissions", "Blueprints", "API / Webhooks", "Reports & Dashboards", "Deluge Script", "Mobile App"].map(kw => (
+                  <button key={kw} className="cx-chip" type="button" onClick={() => setJrQuery(prev => prev.trim() ? `${prev.trim()} — ${kw}` : kw)}>{kw}</button>
+                ))}
+              </div>
+            </div>
 
             <Field label="Zoho application (optional — leave blank to auto-detect)">
               <select className="cx-select" value={jrApp} onChange={e => setJrApp(e.target.value)}>
@@ -2787,30 +2835,13 @@ export default function CXResponseGenerator() {
 
             <button className="cx-generate-btn" onClick={handleAskJrSME} disabled={jrLoading} type="button">
               {jrLoading ? <RefreshCw size={16} className="cx-spin" /> : <GraduationCap size={16} />}
-              {jrLoading ? "Looking this up…" : "Ask Jr SME"}
+              {jrLoading ? "Looking this up in official Zoho docs…" : "Ask Jr SME"}
             </button>
             {jrError && <div className="cx-error"><AlertCircle size={14} /> {jrError}</div>}
             <button className="cx-clear-link" onClick={handleClearJrSME} type="button">Clear</button>
-          </div>
-
-          {/* RIGHT: answer + recent questions */}
-          <div>
-            <div className="cx-panel">
-              {!jrAnswer && !jrLoading && (
-                <div className="cx-empty">Ask a product question and Jr SME will look it up in Zoho's official help documentation.</div>
-              )}
-              {jrLoading && <JrSMESkeleton />}
-              {jrAnswer && !jrLoading && (
-                <>
-                  <JrSMEResponseView answer={jrAnswer} />
-                  <JrSMEFollowUpChat originalQuery={jrQuery} originalAnswer={jrAnswer} appName={jrApp} />
-                </>
-              )}
-
-            </div>
 
             {jrHistory.length > 0 && (
-              <div className="cx-panel" style={{ marginTop: 16 }}>
+              <div style={{ marginTop: 22, paddingTop: 16, borderTop: "1px solid var(--hairline)" }}>
                 <div className="cx-field-label" style={{ marginBottom: 10 }}>Recent questions</div>
                 {jrHistory.map(h => (
                   <div className="cx-history-item" key={h.id} onClick={() => reopenJrHistory(h)}>
@@ -2823,6 +2854,26 @@ export default function CXResponseGenerator() {
                 ))}
               </div>
             )}
+          </div>
+
+          {/* RIGHT: large answer area — 4fr of the viewport */}
+          <div>
+            <div className="cx-panel">
+              {!jrAnswer && !jrLoading && (
+                <div className="cx-empty" style={{ minHeight: 240, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10 }}>
+                  <GraduationCap size={36} style={{ color: "var(--accent)", opacity: 0.4 }} />
+                  <div style={{ fontWeight: 600 }}>Ask Jr SME a question</div>
+                  <div style={{ fontSize: 12.5, maxWidth: 340, textAlign: "center" }}>Type your question on the left and click <strong>Ask Jr SME</strong>. The answer will appear here with step-by-step guidance, code blocks, and official Zoho help links.</div>
+                </div>
+              )}
+              {jrLoading && <JrSMESkeleton />}
+              {jrAnswer && !jrLoading && (
+                <>
+                  <JrSMEResponseView answer={jrAnswer} />
+                  <JrSMEFollowUpChat originalQuery={jrQuery} originalAnswer={jrAnswer} appName={jrApp} />
+                </>
+              )}
+            </div>
           </div>
         </div>
         )}
