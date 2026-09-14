@@ -578,10 +578,25 @@ function extractAnswerAndSources(candidate) {
   const seen = new Map();
   const chunks = candidate?.groundingMetadata?.groundingChunks || [];
   for (const c of chunks) {
-    const url = c.web?.uri;
-    if (url) seen.set(url, c.web?.title || url);
+    let url = c.web?.uri;
+    let title = c.web?.title || url;
+    if (url) {
+      if (url.includes("google.com/url?") && url.includes("url=")) {
+        try {
+          const match = url.match(/[?&]url=([^&]+)/);
+          if (match) url = decodeURIComponent(match[1]);
+        } catch { /* fallback */ }
+      }
+      seen.set(url, title);
+    }
   }
-  return { text: text.trim(), sources: Array.from(seen, ([url, title]) => ({ url, title })) };
+
+  const searchQueries = candidate?.groundingMetadata?.webSearchQueries || [];
+  return {
+    text: text.trim(),
+    sources: Array.from(seen, ([url, title]) => ({ url, title })),
+    searchQueries
+  };
 }
 
 const APP_SLUG_MAP = {
@@ -664,9 +679,9 @@ const TOPIC_PATTERNS = [
   },
   {
     key: "api",
-    terms: ["api", "webhook", "rest api", "sdk", "oauth", "access token", "integration", "developer", "deluge"],
+    terms: ["api", "webhook", "rest api", "sdk", "oauth", "access token", "integration", "developer", "deluge", "json", "coql"],
     searchQ: "api+developer+guide+webhooks",
-    title: "API Reference & Integrations"
+    title: "API Reference & Developer Integration"
   },
   {
     key: "notifications",
@@ -754,7 +769,8 @@ const SPECIFIC_ARTICLE_PATHS = {
     email: "https://help.zoho.com/portal/en/kb/crm/email/email-configuration",
     reports: "https://help.zoho.com/portal/en/kb/crm/analytics-and-reports/reports",
     users: "https://help.zoho.com/portal/en/kb/crm/users-and-permissions/user-management",
-    formula: "https://help.zoho.com/portal/en/kb/crm/developer-guide/custom-functions"
+    formula: "https://help.zoho.com/portal/en/kb/crm/developer-guide/custom-functions",
+    api: "https://www.zoho.com/crm/developer/docs/api/v6/"
   },
   "Zoho Projects": {
     archive: "https://help.zoho.com/portal/en/kb/projects/projects/project-operations",
@@ -787,17 +803,33 @@ function generateDynamicHelpSources({ query, appName, groundingSources = [] }) {
 
   const finalSources = [];
 
-  // 1. Include verified grounding sources returned by Gemini Search grounding
+  // 1. Process grounding sources returned by live web search
   for (const g of groundingSources) {
     if (g.url && !finalSources.some(s => s.url === g.url)) {
+      let cleanTitle = g.title || `Official ${detectedApp} Help Documentation`;
+      cleanTitle = cleanTitle.replace(/\s*[-|]\s*Zoho\s*Cares.*$/i, "").replace(/\s*[-|]\s*Zoho Help.*$/i, "").trim();
       finalSources.push({
         url: g.url,
-        title: g.title || `Official ${detectedApp} Help Guide`
+        title: cleanTitle || `${detectedApp} Official Help Article`,
+        badge: "Official Help"
       });
     }
   }
 
-  // 2. Detect topic matches from query
+  // 2. Add Developer & API Documentation link for technical / code / JSON queries
+  const isDevQuery = lowerQ.includes("api") || lowerQ.includes("json") || lowerQ.includes("deluge") || lowerQ.includes("coql") || lowerQ.includes("sdk") || lowerQ.includes("webhook") || lowerQ.includes("rest");
+  if (isDevQuery) {
+    const devUrl = `https://www.zoho.com/${slug}/developer/docs/`;
+    if (!finalSources.some(s => s.url === devUrl)) {
+      finalSources.push({
+        url: devUrl,
+        title: `${detectedApp} Developer & API Reference Documentation`,
+        badge: "Developer API Docs"
+      });
+    }
+  }
+
+  // 3. Detect topic matches from query
   const matchedTopics = [];
   for (const pattern of TOPIC_PATTERNS) {
     if (pattern.terms.some(term => lowerQ.includes(term))) {
@@ -805,7 +837,6 @@ function generateDynamicHelpSources({ query, appName, groundingSources = [] }) {
     }
   }
 
-  // Add specific curated article links or targeted topic search links
   const appSpecific = SPECIFIC_ARTICLE_PATHS[detectedApp];
   for (const topic of matchedTopics) {
     if (appSpecific && appSpecific[topic.key]) {
@@ -813,47 +844,61 @@ function generateDynamicHelpSources({ query, appName, groundingSources = [] }) {
       if (!finalSources.some(s => s.url === specificUrl)) {
         finalSources.push({
           url: specificUrl,
-          title: `${detectedApp} - ${topic.title} (Official Guide)`
+          title: `${detectedApp} - ${topic.title} (Official Guide)`,
+          badge: "Official Guide"
         });
       }
     } else {
-      const topicSearchUrl = `https://help.zoho.com/portal/en/kb/${slug}/search?q=${encodeURIComponent(topic.searchQ)}`;
+      const topicSearchUrl = `https://help.zoho.com/portal/en/kb/search?query=${encodeURIComponent(topic.searchQ)}+${slug}`;
       if (!finalSources.some(s => s.url === topicSearchUrl)) {
         finalSources.push({
           url: topicSearchUrl,
-          title: `${detectedApp} Guide: ${topic.title}`
+          title: `${detectedApp} Knowledge Base: ${topic.title}`,
+          badge: "Knowledge Base"
         });
       }
     }
     if (finalSources.length >= 4) break;
   }
 
-  // 3. Fallback / Direct Query Search Link on Official Zoho Help Portal
+  // 4. Guaranteed 100% Working Live Search Link across official Zoho Help Portal
   if (query && query.trim().length > 3) {
-    const cleanQuery = query.replace(/[^\w\s]/gi, '').trim();
-    const searchKeywords = encodeURIComponent(cleanQuery);
-    const cleanTitle = query.length > 50 ? query.slice(0, 50) + "…" : query;
+    const cleanQuery = query.replace(/[^\w\s]/gi, ' ').trim();
+    const searchKeywords = encodeURIComponent(`${detectedApp} ${cleanQuery}`);
+    const displayTitle = query.length > 40 ? query.slice(0, 40) + "…" : query;
 
-    const querySearchUrl = `https://help.zoho.com/portal/en/kb/${slug}/search?q=${searchKeywords}`;
-    if (!finalSources.some(s => s.url === querySearchUrl)) {
+    const directSearchUrl = `https://www.google.com/search?q=site%3Ahelp.zoho.com+${searchKeywords}`;
+    if (!finalSources.some(s => s.url === directSearchUrl)) {
       finalSources.push({
-        url: querySearchUrl,
-        title: `${detectedApp} Official Help Search: "${cleanTitle}"`
+        url: directSearchUrl,
+        title: `Search Official ${detectedApp} Help Docs for "${displayTitle}"`,
+        badge: "Live Search"
       });
     }
   }
 
-  // 4. Main Knowledge Base portal URL for the detected app
-  const mainKbUrl = ZOHO_APP_LOOKUP[detectedApp] || `https://help.zoho.com/portal/en/kb/${slug}`;
+  // 5. Official Knowledge Base Portal & Community Forum Links
+  const mainKbUrl = ZOHO_APP_LOOKUP[detectedApp] || `https://help.zoho.com/portal/en/kb/zoho/${slug}`;
   if (!finalSources.some(s => s.url === mainKbUrl)) {
     finalSources.push({
       url: mainKbUrl,
-      title: `${detectedApp} Official Knowledge Base Home`
+      title: `${detectedApp} Official Knowledge Base Portal`,
+      badge: "Knowledge Base"
+    });
+  }
+
+  const communityUrl = `https://help.zoho.com/portal/en/community/zoho-${slug}`;
+  if (finalSources.length < 5 && !finalSources.some(s => s.url === communityUrl)) {
+    finalSources.push({
+      url: communityUrl,
+      title: `${detectedApp} Official Community & Support Forum`,
+      badge: "Community Forum"
     });
   }
 
   return finalSources;
 }
+
 
 
 async function askJrSME({ query, appName }) {
@@ -1043,6 +1088,157 @@ function FormatInline({ text }) {
   );
 }
 
+function tryParseJson(text) {
+  if (!text) return null;
+  let cleaned = text.trim();
+  if (cleaned.startsWith("```")) {
+    cleaned = cleaned.replace(/^```(\w+)?\n?/, "").replace(/\n?```$/, "").trim();
+  }
+  if ((cleaned.startsWith("{") && cleaned.endsWith("}")) || (cleaned.startsWith("[") && cleaned.endsWith("]"))) {
+    try {
+      const parsed = JSON.parse(cleaned);
+      return { parsed, formatted: JSON.stringify(parsed, null, 2), raw: cleaned };
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+function parseMarkdownContentBlocks(contentStr) {
+  if (!contentStr) return [];
+  const blocks = [];
+  const lines = contentStr.split("\n");
+  let inCodeBlock = false;
+  let codeLang = "";
+  let codeLines = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const codeFenceMatch = line.match(/^```(\w+)?/);
+
+    if (codeFenceMatch) {
+      if (inCodeBlock) {
+        blocks.push({
+          type: "code",
+          lang: codeLang || "code",
+          code: codeLines.join("\n")
+        });
+        inCodeBlock = false;
+        codeLang = "";
+        codeLines = [];
+      } else {
+        inCodeBlock = true;
+        codeLang = codeFenceMatch[1] || "json";
+        codeLines = [];
+      }
+      continue;
+    }
+
+    if (inCodeBlock) {
+      codeLines.push(line);
+      continue;
+    }
+
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+
+    const stepMatch = trimmed.match(/^(\d+)[\.\)]\s+(.+)$/);
+    const bulletMatch = trimmed.match(/^[\-\*]\s+(.+)$/);
+
+    if (stepMatch) {
+      blocks.push({ type: "step", num: stepMatch[1], text: stepMatch[2] });
+    } else if (bulletMatch) {
+      blocks.push({ type: "bullet", text: bulletMatch[1] });
+    } else {
+      blocks.push({ type: "paragraph", text: trimmed });
+    }
+  }
+
+  if (inCodeBlock && codeLines.length > 0) {
+    blocks.push({
+      type: "code",
+      lang: codeLang || "json",
+      code: codeLines.join("\n")
+    });
+  }
+
+  return blocks;
+}
+
+function CodeBlockView({ lang, code }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    const ok = await copyResponseText(code);
+    if (ok) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1600);
+    }
+  };
+
+  return (
+    <div className="jr-codeblock-card">
+      <div className="jr-codeblock-header">
+        <span className="jr-codeblock-lang">{(lang || "CODE").toUpperCase()}</span>
+        <button className="jr-codeblock-copy" onClick={handleCopy} type="button">
+          {copied ? <Check size={13} /> : <Copy size={13} />}
+          <span>{copied ? "Copied!" : "Copy Code"}</span>
+        </button>
+      </div>
+      <pre className="jr-codeblock-pre">
+        <code>{code}</code>
+      </pre>
+    </div>
+  );
+}
+
+function JrSMEJsonViewer({ jsonInfo }) {
+  const [copiedFormatted, setCopiedFormatted] = useState(false);
+  const [copiedRaw, setCopiedRaw] = useState(false);
+
+  const handleCopyFormatted = async () => {
+    const ok = await copyResponseText(jsonInfo.formatted);
+    if (ok) {
+      setCopiedFormatted(true);
+      setTimeout(() => setCopiedFormatted(false), 1600);
+    }
+  };
+
+  const handleCopyRaw = async () => {
+    const ok = await copyResponseText(jsonInfo.raw);
+    if (ok) {
+      setCopiedRaw(true);
+      setTimeout(() => setCopiedRaw(false), 1600);
+    }
+  };
+
+  return (
+    <div className="jr-json-card">
+      <div className="jr-json-header">
+        <div className="jr-json-title-group">
+          <Sparkles size={15} className="jr-sec-icon" />
+          <span>Structured JSON Response</span>
+          <span className="jr-json-badge">Valid JSON</span>
+        </div>
+        <div className="jr-json-actions">
+          <button className="cx-action-btn" onClick={handleCopyFormatted} type="button">
+            {copiedFormatted ? <Check size={14} /> : <Copy size={14} />}
+            {copiedFormatted ? "Copied Formatted!" : "Copy Formatted JSON"}
+          </button>
+          <button className="cx-action-btn" onClick={handleCopyRaw} type="button">
+            {copiedRaw ? <Check size={14} /> : <ClipboardList size={14} />}
+            {copiedRaw ? "Copied Raw!" : "Copy Compact JSON"}
+          </button>
+        </div>
+      </div>
+      <pre className="jr-json-pre">
+        <code>{jsonInfo.formatted}</code>
+      </pre>
+    </div>
+  );
+}
+
 function JrSMEResponseView({ answer }) {
   const [copiedCustomerDraft, setCopiedCustomerDraft] = useState(false);
   const [copiedFull, setCopiedFull] = useState(false);
@@ -1050,6 +1246,8 @@ function JrSMEResponseView({ answer }) {
   if (!answer) return null;
 
   const rawText = answer.text || "";
+  const jsonOutput = tryParseJson(rawText);
+
   const rawSections = rawText.split(/(?=\n#{2,3}\s+)/g);
   let customerDraftText = "";
 
@@ -1091,6 +1289,7 @@ function JrSMEResponseView({ answer }) {
           <span className={`cx-mode-badge ${answer.mode === "search" ? "cx-mode-ai" : "cx-mode-template"}`}>
             <Sparkles size={13} /> {answer.mode === "search" ? "Grounded in Official Help" : "Reference Knowledge Mode"}
           </span>
+          {jsonOutput && <span className="jr-json-badge">JSON Format</span>}
         </div>
         <div className="jr-header-actions">
           {customerDraftText && (
@@ -1106,67 +1305,72 @@ function JrSMEResponseView({ answer }) {
         </div>
       </div>
 
-      <div className="jr-sections">
-        {sections.map((sec, sIdx) => {
-          if (!sec.content) return null;
+      {jsonOutput ? (
+        <JrSMEJsonViewer jsonInfo={jsonOutput} />
+      ) : (
+        <div className="jr-sections">
+          {sections.map((sec, sIdx) => {
+            if (!sec.content) return null;
 
-          const isSummary = sec.title.toLowerCase().includes("summary") || sec.title.toLowerCase().includes("overview");
-          const isSteps = sec.title.toLowerCase().includes("step") || sec.title.toLowerCase().includes("solution") || sec.title.toLowerCase().includes("fix");
-          const isNotes = sec.title.toLowerCase().includes("note") || sec.title.toLowerCase().includes("requirement") || sec.title.toLowerCase().includes("tip");
+            const isSummary = sec.title.toLowerCase().includes("summary") || sec.title.toLowerCase().includes("overview");
+            const isSteps = sec.title.toLowerCase().includes("step") || sec.title.toLowerCase().includes("solution") || sec.title.toLowerCase().includes("fix");
+            const isNotes = sec.title.toLowerCase().includes("note") || sec.title.toLowerCase().includes("requirement") || sec.title.toLowerCase().includes("tip");
 
-          const lines = sec.content.split("\n").map(l => l.trim()).filter(Boolean);
+            const blocks = parseMarkdownContentBlocks(sec.content);
 
-          return (
-            <div
-              key={sIdx}
-              className={`jr-section-card ${isSummary ? "jr-card-summary" : ""} ${isSteps ? "jr-card-steps" : ""} ${sec.isCustomerDraft ? "jr-card-customer" : ""} ${isNotes ? "jr-card-notes" : ""}`}
-            >
-              <div className="jr-section-title">
-                {isSummary && <Sparkles size={16} className="jr-sec-icon" />}
-                {isSteps && <ClipboardList size={16} className="jr-sec-icon" />}
-                {isNotes && <BookOpen size={16} className="jr-sec-icon" />}
-                {sec.isCustomerDraft && <HeartHandshake size={16} className="jr-sec-icon" />}
-                <span>{sec.title}</span>
-              </div>
+            return (
+              <div
+                key={sIdx}
+                className={`jr-section-card ${isSummary ? "jr-card-summary" : ""} ${isSteps ? "jr-card-steps" : ""} ${sec.isCustomerDraft ? "jr-card-customer" : ""} ${isNotes ? "jr-card-notes" : ""}`}
+              >
+                <div className="jr-section-title">
+                  {isSummary && <Sparkles size={16} className="jr-sec-icon" />}
+                  {isSteps && <ClipboardList size={16} className="jr-sec-icon" />}
+                  {isNotes && <BookOpen size={16} className="jr-sec-icon" />}
+                  {sec.isCustomerDraft && <HeartHandshake size={16} className="jr-sec-icon" />}
+                  <span>{sec.title}</span>
+                </div>
 
-              <div className="jr-section-body">
-                {lines.map((line, lIdx) => {
-                  const stepMatch = line.match(/^(\d+)[\.\)]\s+(.+)$/);
-                  const bulletMatch = line.match(/^[\-\*]\s+(.+)$/);
+                <div className="jr-section-body">
+                  {blocks.map((b, bIdx) => {
+                    if (b.type === "code") {
+                      return <CodeBlockView key={bIdx} lang={b.lang} code={b.code} />;
+                    }
 
-                  if (stepMatch) {
-                    return (
-                      <div key={lIdx} className="jr-step-row">
-                        <span className="jr-step-badge">{stepMatch[1]}</span>
-                        <div className="jr-step-text">
-                          <FormatInline text={stepMatch[2]} />
+                    if (b.type === "step") {
+                      return (
+                        <div key={bIdx} className="jr-step-row">
+                          <span className="jr-step-badge">{b.num}</span>
+                          <div className="jr-step-text">
+                            <FormatInline text={b.text} />
+                          </div>
                         </div>
-                      </div>
-                    );
-                  }
+                      );
+                    }
 
-                  if (bulletMatch) {
-                    return (
-                      <div key={lIdx} className="jr-bullet-row">
-                        <span className="jr-bullet-dot" />
-                        <div className="jr-bullet-text">
-                          <FormatInline text={bulletMatch[1]} />
+                    if (b.type === "bullet") {
+                      return (
+                        <div key={bIdx} className="jr-bullet-row">
+                          <span className="jr-bullet-dot" />
+                          <div className="jr-bullet-text">
+                            <FormatInline text={b.text} />
+                          </div>
                         </div>
-                      </div>
-                    );
-                  }
+                      );
+                    }
 
-                  return (
-                    <p key={lIdx} className="jr-para">
-                      <FormatInline text={line} />
-                    </p>
-                  );
-                })}
+                    return (
+                      <p key={bIdx} className="jr-para">
+                        <FormatInline text={b.text} />
+                      </p>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
 
       {answer.sources && answer.sources.length > 0 && (
         <div className="jr-sources-section">
@@ -1177,7 +1381,7 @@ function JrSMEResponseView({ answer }) {
             {answer.sources.map((s, i) => (
               <a key={i} href={s.url} target="_blank" rel="noreferrer" className="jr-source-card">
                 <div className="jr-source-card-header">
-                  <span className="jr-source-tag">Official Help</span>
+                  <span className="jr-source-tag">{s.badge || "Official Help"}</span>
                   <ExternalLink size={12} className="jr-source-ext" />
                 </div>
                 <div className="jr-source-title">{s.title || s.url}</div>
@@ -1879,6 +2083,47 @@ export default function CXResponseGenerator() {
           font-family: monospace; font-size: 12.5px; background: var(--accent-soft);
           color: var(--accent-deep); padding: 2px 7px; border-radius: 6px;
         }
+
+        .jr-codeblock-card {
+          margin: 10px 0; border-radius: 12px; overflow: hidden;
+          border: 1px solid var(--hairline); background: #121324; color: #ECEBF5;
+          box-shadow: 0 8px 20px -14px rgba(0,0,0,0.5);
+        }
+        .jr-codeblock-header {
+          display: flex; align-items: center; justify-content: space-between;
+          padding: 8px 14px; background: rgba(255,255,255,0.06);
+          border-bottom: 1px solid rgba(255,255,255,0.08); font-family: monospace; font-size: 11px;
+        }
+        .jr-codeblock-lang { font-weight: 700; color: #9C8DFF; text-transform: uppercase; letter-spacing: 0.04em; }
+        .jr-codeblock-copy {
+          display: flex; align-items: center; gap: 5px; background: rgba(255,255,255,0.1);
+          border: 1px solid rgba(255,255,255,0.15); color: #ECEBF5; padding: 4px 9px;
+          border-radius: 6px; font-size: 11.5px; cursor: pointer; transition: all 0.15s;
+        }
+        .jr-codeblock-copy:hover { background: #9C8DFF; color: #fff; border-color: #9C8DFF; }
+        .jr-codeblock-pre {
+          margin: 0; padding: 14px 16px; overflow-x: auto; font-family: 'Fira Code', 'Courier New', monospace;
+          font-size: 13px; line-height: 1.55; white-space: pre; tab-size: 2; color: #F0F4FF;
+        }
+
+        .jr-json-card {
+          border: 1px solid var(--hairline); border-radius: 16px; padding: 18px 20px;
+          background: var(--panel-solid); box-shadow: 0 10px 28px -20px var(--shadow-color);
+          margin-bottom: 14px;
+        }
+        .jr-json-header {
+          display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;
+          margin-bottom: 14px; padding-bottom: 10px; border-bottom: 1px solid var(--hairline-soft);
+        }
+        .jr-json-title-group { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 15px; color: var(--ink); }
+        .jr-json-badge { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 999px; background: var(--teal-soft); color: var(--teal); }
+        .jr-json-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+        .jr-json-pre {
+          margin: 0; padding: 16px; border-radius: 12px; background: #121324; color: #A6E22E;
+          font-family: monospace; font-size: 13px; line-height: 1.55; overflow-x: auto; white-space: pre;
+          border: 1px solid rgba(255,255,255,0.08);
+        }
+
 
         .jr-nav-crumbs {
           display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap;
