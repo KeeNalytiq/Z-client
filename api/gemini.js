@@ -22,7 +22,7 @@ export default async function handler(req, res) {
     return;
   }
 
-  const { model = "gemini-2.5-flash", ...body } = req.body || {};
+  const { model = "gemini-3.6-flash", ...body } = req.body || {};
 
   try {
     const upstream = await fetch(

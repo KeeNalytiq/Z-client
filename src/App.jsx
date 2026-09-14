@@ -103,6 +103,44 @@ const ZOHO_PRODUCTS = ["Zoho CRM", "Zoho Desk", "Zoho People", "Zoho Payroll", "
   "Zoho Marketing Automation", "Zoho Books", "Zoho Inventory", "Zoho Analytics", "Zoho Projects",
   "Zoho Social", "Zoho Sign", "Zoho Cliq", "Zoho SalesIQ", "Zoho One"];
 
+const DEFAULT_TEMPLATES = [
+  {
+    id: "dt_1",
+    name: "Backend Investigation – Delay Apology",
+    category: "Apology",
+    content: "We understand you are waiting for news on this, and we apologize for the delay.\n\nWe are currently checking this issue with our backend engineering team. They are actively investigating the underlying cause, and we will update you as soon as we receive further details.\n\nWe appreciate your continued patience and understanding.",
+    createdAt: 1700000000000,
+  },
+  {
+    id: "dt_2",
+    name: "Request for Error Screenshots",
+    category: "Information Request",
+    content: "Thank you for reaching out to us regarding this issue.\n\nCould you please share a full-screen screenshot showing the error, ensuring the browser URL bar is clearly visible? This will help our team pinpoint the exact page and state where the issue occurs.\n\nOnce we have this information, we will investigate further right away.",
+    createdAt: 1700000000001,
+  },
+  {
+    id: "dt_3",
+    name: "Request for EML & Error Logs",
+    category: "Information Request",
+    content: "To help us investigate this email delivery issue, could you please export and share the EML file of the affected email along with any relevant error logs?\n\nThis will allow our team to inspect the full email headers and trace the exact failure reason.\n\nThank you for your assistance with this.",
+    createdAt: 1700000000002,
+  },
+  {
+    id: "dt_4",
+    name: "Escalation to Engineering Team",
+    category: "Escalation",
+    content: "We wanted to let you know that your case has been escalated to our senior engineering team for an in-depth review.\n\nWe are monitoring the progress closely and will share an update with you as soon as the team provides feedback.\n\nThank you for your patience as we work through this for you.",
+    createdAt: 1700000000003,
+  },
+  {
+    id: "dt_5",
+    name: "Issue Resolved Confirmation",
+    category: "Resolution",
+    content: "Great news — the issue you reported has now been resolved on our end.\n\nCould you please test this on your side and confirm if everything is working as expected?\n\nIf you experience any further trouble, please let us know and we will be glad to assist.",
+    createdAt: 1700000000004,
+  },
+];
+
 // Official Zoho help-portal index, grouped the way Jr SME presents them in the app selector.
 // Used both to scope/ground the AI's search and to show a direct link when live lookup isn't available.
 const ZOHO_HELP_CATEGORIES = {
@@ -468,36 +506,54 @@ Write like a real support engineer who has actually read these notes — referen
 }
 
 async function generateWithGroq(prompt, count) {
-  const response = await fetch("/api/groq", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: "llama-3.3-70b-versatile",
-      max_tokens: 1000,
-      messages: [{ role: "user", content: prompt }],
-    }),
-  });
-  if (!response.ok) throw new Error("Groq request failed");
-  const data = await response.json();
-  const textBlock = data.choices?.[0]?.message?.content || "";
-  return parseResponseArray(textBlock, count);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 12000);
+  try {
+    const response = await fetch("/api/groq", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal: controller.signal,
+      body: JSON.stringify({
+        model: "openai/gpt-oss-120b",
+        max_tokens: 1000,
+        messages: [{ role: "user", content: prompt }],
+      }),
+    });
+    clearTimeout(timeoutId);
+    if (!response.ok) throw new Error("Groq request failed");
+    const data = await response.json();
+    const textBlock = data.choices?.[0]?.message?.content || "";
+    return parseResponseArray(textBlock, count);
+  } catch (err) {
+    clearTimeout(timeoutId);
+    throw err;
+  }
 }
 
 async function generateWithGemini(prompt, count) {
-  const response = await fetch("/api/gemini", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: "gemini-2.5-flash",
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-      generationConfig: { responseMimeType: "application/json" },
-    }),
-  });
-  if (!response.ok) throw new Error("Gemini request failed");
-  const data = await response.json();
-  const parts = data.candidates?.[0]?.content?.parts || [];
-  const textBlock = parts.map(p => p.text || "").join("");
-  return parseResponseArray(textBlock, count);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 12000);
+  try {
+    const response = await fetch("/api/gemini", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal: controller.signal,
+      body: JSON.stringify({
+        model: "gemini-3.6-flash",
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        generationConfig: { responseMimeType: "application/json" },
+      }),
+    });
+    clearTimeout(timeoutId);
+    if (!response.ok) throw new Error("Gemini request failed");
+    const data = await response.json();
+    const parts = data.candidates?.[0]?.content?.parts || [];
+    const textBlock = parts.map(p => p.text || "").join("");
+    return parseResponseArray(textBlock, count);
+  } catch (err) {
+    clearTimeout(timeoutId);
+    throw err;
+  }
 }
 
 function parseResponseArray(textBlock, count) {
@@ -528,35 +584,361 @@ function extractAnswerAndSources(candidate) {
   return { text: text.trim(), sources: Array.from(seen, ([url, title]) => ({ url, title })) };
 }
 
+const APP_SLUG_MAP = {
+  "Zoho CRM": "crm", "Zoho Desk": "desk", "Zoho Books": "books",
+  "Zoho People": "people", "Zoho Projects": "projects", "Zoho Mail": "mail",
+  "Zoho Campaigns": "campaigns", "Zoho SalesIQ": "salesiq", "Zoho Cliq": "cliq",
+  "Zoho Analytics": "analytics", "Zoho Inventory": "inventory", "Zoho Expense": "expense",
+  "Zoho Forms": "forms", "Zoho Sign": "sign", "Zoho Recruit": "recruit",
+  "Zoho Payroll": "payroll", "Zoho WorkDrive": "workdrive", "Zoho One": "one",
+  "Zoho Bigin": "bigin", "Zoho Flow": "flow", "Zoho Creator": "creator",
+  "Zoho Meeting": "meeting", "Zoho Vault": "vault"
+};
+
+function autoDetectZohoApp(query) {
+  if (!query) return null;
+  const lower = query.toLowerCase();
+  for (const [appName, slug] of Object.entries(APP_SLUG_MAP)) {
+    const coreTerm = appName.toLowerCase().replace("zoho ", "");
+    if (lower.includes(appName.toLowerCase()) || lower.includes(coreTerm)) {
+      return appName;
+    }
+  }
+  return null;
+}
+
+const TOPIC_PATTERNS = [
+  {
+    key: "archive",
+    terms: ["archive", "archiving", "unarchive", "close project", "deactivate project", "project operations"],
+    searchQ: "archive+unarchive+records",
+    title: "Archiving & Managing Records"
+  },
+  {
+    key: "import",
+    terms: ["import", "csv", "xls", "xlsx", "field mapping", "data import", "importing", "migrate", "migration"],
+    searchQ: "import+data+csv+field+mapping",
+    title: "Data Import & Field Mapping Guide"
+  },
+  {
+    key: "export",
+    terms: ["export", "backup", "data backup", "exporting", "csv export", "download data"],
+    searchQ: "export+data+backup",
+    title: "Data Export & Backup Procedures"
+  },
+  {
+    key: "custom_field",
+    terms: ["custom field", "add field", "field type", "formula field", "lookup field", "field label", "picklist", "multi-select"],
+    searchQ: "custom+fields+configuration",
+    title: "Creating & Managing Custom Fields"
+  },
+  {
+    key: "workflow",
+    terms: ["workflow", "automation", "trigger", "action", "alert", "field update", "webhooks", "macro", "rule"],
+    searchQ: "workflow+rules+automation",
+    title: "Workflow Rules & Process Automation"
+  },
+  {
+    key: "blueprint",
+    terms: ["blueprint", "stage transition", "state machine", "process builder", "pipeline step", "transition"],
+    searchQ: "blueprint+process+management",
+    title: "Blueprint Process Automation Guide"
+  },
+  {
+    key: "email",
+    terms: ["email", "smtp", "imap", "email integration", "template", "mail merge", "email opt out", "dkim", "spf", "bounce"],
+    searchQ: "email+integration+configuration",
+    title: "Email Integration & Settings"
+  },
+  {
+    key: "roles",
+    terms: ["role", "profile", "permission", "security control", "sharing rule", "access control", "user group", "hierarchy"],
+    searchQ: "roles+profiles+permissions",
+    title: "Roles, Profiles & Security Controls"
+  },
+  {
+    key: "reports",
+    terms: ["report", "dashboard", "analytics", "chart", "kpi", "pivot", "scheduled report", "insights"],
+    searchQ: "reports+dashboards+analytics",
+    title: "Reports & Dashboard Configuration"
+  },
+  {
+    key: "api",
+    terms: ["api", "webhook", "rest api", "sdk", "oauth", "access token", "integration", "developer", "deluge"],
+    searchQ: "api+developer+guide+webhooks",
+    title: "API Reference & Integrations"
+  },
+  {
+    key: "notifications",
+    terms: ["notification", "alert", "push notification", "in-app notification", "email notification", "reminder"],
+    searchQ: "notifications+alerts+reminders",
+    title: "Notification & Alert Settings"
+  },
+  {
+    key: "leads",
+    terms: ["lead", "contact", "account", "convert lead", "lead assignment", "scoring", "assignment rule"],
+    searchQ: "leads+contacts+conversion",
+    title: "Lead & Contact Management"
+  },
+  {
+    key: "deals",
+    terms: ["deal", "potential", "opportunity", "pipeline", "stage", "forecast", "closing"],
+    searchQ: "deals+pipeline+stages",
+    title: "Deals & Pipeline Management"
+  },
+  {
+    key: "tasks",
+    terms: ["task", "activity", "call", "meeting", "event", "calendar", "follow up", "milestone", "timesheet"],
+    searchQ: "tasks+activities+calendar",
+    title: "Task & Activity Management"
+  },
+  {
+    key: "invoices",
+    terms: ["invoice", "estimate", "payment", "subscription", "recurring", "billing", "tax", "gst", "currency", "quote"],
+    searchQ: "invoices+estimates+payments",
+    title: "Invoices, Estimates & Billing"
+  },
+  {
+    key: "tickets",
+    terms: ["ticket", "sla", "escalation", "customer support", "agent", "dept", "department", "portal", "kb"],
+    searchQ: "tickets+sla+support",
+    title: "Support Tickets & SLA Rules"
+  },
+  {
+    key: "users",
+    terms: ["add user", "deactivate user", "sso", "2fa", "mfa", "login", "password reset", "domain authentication", "support access"],
+    searchQ: "user+management+authentication",
+    title: "User Management & Support Access"
+  },
+  {
+    key: "templates",
+    terms: ["template", "email template", "inventory template", "quote template", "print template", "pdf template"],
+    searchQ: "templates+customization",
+    title: "Templates Customization Guide"
+  },
+  {
+    key: "layouts",
+    terms: ["layout", "page layout", "canvas", "section", "layout assignment", "conditional field"],
+    searchQ: "page+layouts+customization",
+    title: "Page Layouts & UI Customization"
+  },
+  {
+    key: "leave",
+    terms: ["leave", "attendance", "shift", "timesheet", "check in", "holiday", "payroll", "time off"],
+    searchQ: "leave+attendance+timesheets",
+    title: "Leave & Attendance Management"
+  },
+  {
+    key: "campaigns",
+    terms: ["campaign", "mass email", "newsletter", "drip campaign", "subscriber", "mailing list", "open rate"],
+    searchQ: "campaigns+email+marketing",
+    title: "Email Campaigns & Subscribers"
+  },
+  {
+    key: "formula",
+    terms: ["deluge", "custom function", "script", "formula", "validation rule", "custom button"],
+    searchQ: "deluge+scripts+custom+functions",
+    title: "Deluge Scripting & Custom Functions"
+  }
+];
+
+const SPECIFIC_ARTICLE_PATHS = {
+  "Zoho CRM": {
+    archive: "https://help.zoho.com/portal/en/kb/crm/data-administration/storage-space/articles/archive-data",
+    import: "https://help.zoho.com/portal/en/kb/crm/data-administration/import-data",
+    export: "https://help.zoho.com/portal/en/kb/crm/data-administration/export-data",
+    custom_field: "https://help.zoho.com/portal/en/kb/crm/customization/custom-fields",
+    workflow: "https://help.zoho.com/portal/en/kb/crm/automate-business-processes/workflow-management",
+    blueprint: "https://help.zoho.com/portal/en/kb/crm/automate-business-processes/blueprint",
+    roles: "https://help.zoho.com/portal/en/kb/crm/users-and-permissions/roles",
+    email: "https://help.zoho.com/portal/en/kb/crm/email/email-configuration",
+    reports: "https://help.zoho.com/portal/en/kb/crm/analytics-and-reports/reports",
+    users: "https://help.zoho.com/portal/en/kb/crm/users-and-permissions/user-management",
+    formula: "https://help.zoho.com/portal/en/kb/crm/developer-guide/custom-functions"
+  },
+  "Zoho Projects": {
+    archive: "https://help.zoho.com/portal/en/kb/projects/projects/project-operations",
+    tasks: "https://help.zoho.com/portal/en/kb/projects/tasks",
+    custom_field: "https://help.zoho.com/portal/en/kb/projects/settings/customization/custom-fields",
+    reports: "https://help.zoho.com/portal/en/kb/projects/reports",
+    users: "https://help.zoho.com/portal/en/kb/projects/settings/users"
+  },
+  "Zoho Desk": {
+    tickets: "https://help.zoho.com/portal/en/kb/desk/tickets",
+    workflow: "https://help.zoho.com/portal/en/kb/desk/automation",
+    custom_field: "https://help.zoho.com/portal/en/kb/desk/customization",
+    reports: "https://help.zoho.com/portal/en/kb/desk/reports"
+  },
+  "Zoho Books": {
+    invoices: "https://help.zoho.com/portal/en/kb/books/invoices",
+    import: "https://help.zoho.com/portal/en/kb/books/items",
+    reports: "https://help.zoho.com/portal/en/kb/books/reports"
+  },
+  "Zoho People": {
+    leave: "https://help.zoho.com/portal/en/kb/people/leave-tracker",
+    users: "https://help.zoho.com/portal/en/kb/people/organization/employee"
+  }
+};
+
+function generateDynamicHelpSources({ query, appName, groundingSources = [] }) {
+  const detectedApp = appName || autoDetectZohoApp(query) || "Zoho CRM";
+  const slug = APP_SLUG_MAP[detectedApp] || "crm";
+  const lowerQ = (query || "").toLowerCase();
+
+  const finalSources = [];
+
+  // 1. Include verified grounding sources returned by Gemini Search grounding
+  for (const g of groundingSources) {
+    if (g.url && !finalSources.some(s => s.url === g.url)) {
+      finalSources.push({
+        url: g.url,
+        title: g.title || `Official ${detectedApp} Help Guide`
+      });
+    }
+  }
+
+  // 2. Detect topic matches from query
+  const matchedTopics = [];
+  for (const pattern of TOPIC_PATTERNS) {
+    if (pattern.terms.some(term => lowerQ.includes(term))) {
+      matchedTopics.push(pattern);
+    }
+  }
+
+  // Add specific curated article links or targeted topic search links
+  const appSpecific = SPECIFIC_ARTICLE_PATHS[detectedApp];
+  for (const topic of matchedTopics) {
+    if (appSpecific && appSpecific[topic.key]) {
+      const specificUrl = appSpecific[topic.key];
+      if (!finalSources.some(s => s.url === specificUrl)) {
+        finalSources.push({
+          url: specificUrl,
+          title: `${detectedApp} - ${topic.title} (Official Guide)`
+        });
+      }
+    } else {
+      const topicSearchUrl = `https://help.zoho.com/portal/en/kb/${slug}/search?q=${encodeURIComponent(topic.searchQ)}`;
+      if (!finalSources.some(s => s.url === topicSearchUrl)) {
+        finalSources.push({
+          url: topicSearchUrl,
+          title: `${detectedApp} Guide: ${topic.title}`
+        });
+      }
+    }
+    if (finalSources.length >= 4) break;
+  }
+
+  // 3. Fallback / Direct Query Search Link on Official Zoho Help Portal
+  if (query && query.trim().length > 3) {
+    const cleanQuery = query.replace(/[^\w\s]/gi, '').trim();
+    const searchKeywords = encodeURIComponent(cleanQuery);
+    const cleanTitle = query.length > 50 ? query.slice(0, 50) + "…" : query;
+
+    const querySearchUrl = `https://help.zoho.com/portal/en/kb/${slug}/search?q=${searchKeywords}`;
+    if (!finalSources.some(s => s.url === querySearchUrl)) {
+      finalSources.push({
+        url: querySearchUrl,
+        title: `${detectedApp} Official Help Search: "${cleanTitle}"`
+      });
+    }
+  }
+
+  // 4. Main Knowledge Base portal URL for the detected app
+  const mainKbUrl = ZOHO_APP_LOOKUP[detectedApp] || `https://help.zoho.com/portal/en/kb/${slug}`;
+  if (!finalSources.some(s => s.url === mainKbUrl)) {
+    finalSources.push({
+      url: mainKbUrl,
+      title: `${detectedApp} Official Knowledge Base Home`
+    });
+  }
+
+  return finalSources;
+}
+
+
 async function askJrSME({ query, appName }) {
-  const scopedUrl = appName ? ZOHO_APP_LOOKUP[appName] : null;
+  const targetApp = appName || autoDetectZohoApp(query) || "";
+  const scopedUrl = targetApp ? ZOHO_APP_LOOKUP[targetApp] : null;
+
   const prompt = `You are "Jr SME", an internal knowledge assistant for a SaaS customer support engineer working across Zoho products.
 
 Support engineer's question (in their own words): "${query}"
-${appName ? `Relevant Zoho application: ${appName}\nIts official help portal: ${scopedUrl}` : "The engineer did not specify which Zoho application this is about — infer it from the question."}
+${targetApp ? `Relevant Zoho application: ${targetApp}\nIts official help portal: ${scopedUrl}` : "Infer the relevant Zoho application from the question."}
 
 Instructions:
-- Search help.zoho.com (Zoho's official help documentation) to find the accurate, current answer. Only use help.zoho.com as a source — do not use forums, blogs, or third-party sites.
-${appName ? `- Focus your search under ${scopedUrl} and other help.zoho.com pages for ${appName}.` : ""}
-- Give a clear, step-by-step internal answer a support engineer could act on or paraphrase for a customer.
-- Preserve exact navigation steps, field names, and menu labels as documented — do not invent or guess steps that aren't confirmed by the documentation.
-- If the documentation doesn't clearly answer this, say so plainly instead of guessing.
-- Keep it concise and skip generic disclaimers.`;
+- Search help.zoho.com (Zoho's official help documentation) to find the accurate, current answer. Only use help.zoho.com as a source.
+${scopedUrl ? `- Focus your search under ${scopedUrl} and official help.zoho.com pages for ${targetApp}.` : ""}
 
-  const response = await fetch("/api/gemini", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      model: "gemini-2.5-flash",
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-      tools: [{ google_search: {} }],
-    }),
+- Format your response using clean Markdown with these specific section headers:
+  ### 🎯 Summary
+  [1-2 sentences direct summary answer]
+
+  ### 📋 Step-by-Step Solution
+  [Numbered list (1., 2., 3.) with exact UI navigation paths highlighted using > separator, e.g. Setup > Customization > Modules and Fields]
+
+  ### 💡 Key Notes & Requirements
+  [Prerequisites, permissions required, or important caveats]
+
+  ### 💬 Suggested Customer Response
+  [A ready-to-send, polite, customer-facing email response that the engineer can copy and send directly to the customer]
+
+- Preserve exact navigation steps, field names, and menu labels as documented in official Zoho help.
+- Do not invent or guess steps. Skip generic disclaimers.`;
+
+  let finalAnswerText = "";
+  let rawGroundingSources = [];
+  let mode = "search";
+
+  // 1. Try grounded Google Search lookup via Gemini 3.6 Flash
+  try {
+    const response = await fetch("/api/gemini", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "gemini-3.6-flash",
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        tools: [{ google_search: {} }],
+      }),
+    });
+    if (response.ok) {
+      const data = await response.json();
+      const { text, sources } = extractAnswerAndSources(data.candidates?.[0]);
+      if (text) {
+        finalAnswerText = text;
+        rawGroundingSources = sources;
+      }
+    }
+  } catch {
+    /* Fallback to ungrounded Gemini query if grounding tool hits rate-limit/quota */
+  }
+
+  // 2. Fallback to standard Gemini 3.6 Flash query if google_search tool is rate-limited or fails
+  if (!finalAnswerText) {
+    const fallbackResponse = await fetch("/api/gemini", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "gemini-3.6-flash",
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+      }),
+    });
+
+    if (!fallbackResponse.ok) throw new Error("Jr SME lookup failed");
+    const data = await fallbackResponse.json();
+    const parts = data.candidates?.[0]?.content?.parts || [];
+    finalAnswerText = parts.map(p => p.text || "").join("").trim();
+    if (!finalAnswerText) throw new Error("Empty Jr SME response");
+    mode = "fallback";
+  }
+
+  // Generate dynamic, query-specific help article links for any query and any Zoho app
+  const finalSources = generateDynamicHelpSources({
+    query,
+    appName: targetApp,
+    groundingSources: rawGroundingSources
   });
-  if (!response.ok) throw new Error("Jr SME lookup failed");
-  const data = await response.json();
-  const { text, sources } = extractAnswerAndSources(data.candidates?.[0]);
-  if (!text) throw new Error("Empty Jr SME response");
-  return { text, sources };
+
+  return { text: finalAnswerText, sources: finalSources, mode };
 }
 
 /* =========================================================================
@@ -629,6 +1011,200 @@ function TabButton({ active, onClick, icon: Icon, children }) {
   );
 }
 
+function FormatInline({ text }) {
+  if (!text) return null;
+  const parts = text.split(/(\*\*.*?\*\*|`.*?`|\b(?:[A-Z][a-z0-9A-Z]+\s*>\s*)+[A-Z][a-z0-9A-Z]+\b)/g);
+  return (
+    <>
+      {parts.map((part, idx) => {
+        if (!part) return null;
+        if (part.startsWith("**") && part.endsWith("**")) {
+          return <strong key={idx} className="jr-bold">{part.slice(2, -2)}</strong>;
+        }
+        if (part.startsWith("`") && part.endsWith("`")) {
+          return <code key={idx} className="jr-code">{part.slice(1, -1)}</code>;
+        }
+        if (part.includes(">")) {
+          const crumbs = part.split(/\s*>\s*/);
+          return (
+            <span key={idx} className="jr-nav-crumbs">
+              {crumbs.map((c, ci) => (
+                <React.Fragment key={ci}>
+                  {ci > 0 && <span className="jr-crumb-arrow">➔</span>}
+                  <span className="jr-crumb">{c}</span>
+                </React.Fragment>
+              ))}
+            </span>
+          );
+        }
+        return part;
+      })}
+    </>
+  );
+}
+
+function JrSMEResponseView({ answer }) {
+  const [copiedCustomerDraft, setCopiedCustomerDraft] = useState(false);
+  const [copiedFull, setCopiedFull] = useState(false);
+
+  if (!answer) return null;
+
+  const rawText = answer.text || "";
+  const rawSections = rawText.split(/(?=\n#{2,3}\s+)/g);
+  let customerDraftText = "";
+
+  const sections = rawSections.map((secStr, index) => {
+    const trimmed = secStr.trim();
+    const headerMatch = trimmed.match(/^#{2,3}\s+(.+)$/m);
+    const title = headerMatch ? headerMatch[1].replace(/^[^\w\s]+/, "").trim() : (index === 0 ? "Overview" : "Details");
+    const content = headerMatch ? trimmed.replace(/^#{2,3}\s+.+$/m, "").trim() : trimmed;
+
+    const isCustomerDraft = title.toLowerCase().includes("customer") || title.toLowerCase().includes("draft");
+    if (isCustomerDraft && content) {
+      customerDraftText = content;
+    }
+
+    return { title, content, isCustomerDraft, raw: trimmed };
+  });
+
+  const handleCopyCustomerDraft = async () => {
+    if (!customerDraftText) return;
+    const ok = await copyResponseText(customerDraftText);
+    if (ok) {
+      setCopiedCustomerDraft(true);
+      setTimeout(() => setCopiedCustomerDraft(false), 1600);
+    }
+  };
+
+  const handleCopyFull = async () => {
+    const ok = await copyResponseText(rawText);
+    if (ok) {
+      setCopiedFull(true);
+      setTimeout(() => setCopiedFull(false), 1600);
+    }
+  };
+
+  return (
+    <div className="jr-response-container">
+      <div className="jr-response-header">
+        <div className="jr-badge-group">
+          <span className={`cx-mode-badge ${answer.mode === "search" ? "cx-mode-ai" : "cx-mode-template"}`}>
+            <Sparkles size={13} /> {answer.mode === "search" ? "Grounded in Official Help" : "Reference Knowledge Mode"}
+          </span>
+        </div>
+        <div className="jr-header-actions">
+          {customerDraftText && (
+            <button className="cx-action-btn jr-customer-draft-btn" onClick={handleCopyCustomerDraft} type="button">
+              {copiedCustomerDraft ? <Check size={14} /> : <ClipboardList size={14} />}
+              {copiedCustomerDraft ? "Customer Draft Copied!" : "Copy Customer Response"}
+            </button>
+          )}
+          <button className="cx-action-btn" onClick={handleCopyFull} type="button">
+            {copiedFull ? <Check size={14} /> : <Copy size={14} />}
+            {copiedFull ? "Copied!" : "Copy Full Answer"}
+          </button>
+        </div>
+      </div>
+
+      <div className="jr-sections">
+        {sections.map((sec, sIdx) => {
+          if (!sec.content) return null;
+
+          const isSummary = sec.title.toLowerCase().includes("summary") || sec.title.toLowerCase().includes("overview");
+          const isSteps = sec.title.toLowerCase().includes("step") || sec.title.toLowerCase().includes("solution") || sec.title.toLowerCase().includes("fix");
+          const isNotes = sec.title.toLowerCase().includes("note") || sec.title.toLowerCase().includes("requirement") || sec.title.toLowerCase().includes("tip");
+
+          const lines = sec.content.split("\n").map(l => l.trim()).filter(Boolean);
+
+          return (
+            <div
+              key={sIdx}
+              className={`jr-section-card ${isSummary ? "jr-card-summary" : ""} ${isSteps ? "jr-card-steps" : ""} ${sec.isCustomerDraft ? "jr-card-customer" : ""} ${isNotes ? "jr-card-notes" : ""}`}
+            >
+              <div className="jr-section-title">
+                {isSummary && <Sparkles size={16} className="jr-sec-icon" />}
+                {isSteps && <ClipboardList size={16} className="jr-sec-icon" />}
+                {isNotes && <BookOpen size={16} className="jr-sec-icon" />}
+                {sec.isCustomerDraft && <HeartHandshake size={16} className="jr-sec-icon" />}
+                <span>{sec.title}</span>
+              </div>
+
+              <div className="jr-section-body">
+                {lines.map((line, lIdx) => {
+                  const stepMatch = line.match(/^(\d+)[\.\)]\s+(.+)$/);
+                  const bulletMatch = line.match(/^[\-\*]\s+(.+)$/);
+
+                  if (stepMatch) {
+                    return (
+                      <div key={lIdx} className="jr-step-row">
+                        <span className="jr-step-badge">{stepMatch[1]}</span>
+                        <div className="jr-step-text">
+                          <FormatInline text={stepMatch[2]} />
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  if (bulletMatch) {
+                    return (
+                      <div key={lIdx} className="jr-bullet-row">
+                        <span className="jr-bullet-dot" />
+                        <div className="jr-bullet-text">
+                          <FormatInline text={bulletMatch[1]} />
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <p key={lIdx} className="jr-para">
+                      <FormatInline text={line} />
+                    </p>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {answer.sources && answer.sources.length > 0 && (
+        <div className="jr-sources-section">
+          <div className="jr-sources-title">
+            <ExternalLink size={13} /> Official Help Documentation Sources ({answer.sources.length})
+          </div>
+          <div className="jr-sources-grid">
+            {answer.sources.map((s, i) => (
+              <a key={i} href={s.url} target="_blank" rel="noreferrer" className="jr-source-card">
+                <div className="jr-source-card-header">
+                  <span className="jr-source-tag">Official Help</span>
+                  <ExternalLink size={12} className="jr-source-ext" />
+                </div>
+                <div className="jr-source-title">{s.title || s.url}</div>
+                <div className="jr-source-url">{s.url.replace(/^https?:\/\//, "")}</div>
+              </a>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function JrSMESkeleton() {
+  return (
+    <div className="jr-skeleton-container">
+      <div className="jr-skeleton-header">
+        <div className="jr-skeleton-pill" style={{ width: 140, height: 24 }} />
+        <div className="jr-skeleton-pill" style={{ width: 90, height: 28 }} />
+      </div>
+      <div className="jr-skeleton-card" style={{ height: 90 }} />
+      <div className="jr-skeleton-card" style={{ height: 160 }} />
+      <div className="jr-skeleton-card" style={{ height: 110 }} />
+    </div>
+  );
+}
+
 /* =========================================================================
    MAIN APP
    ========================================================================= */
@@ -679,12 +1255,16 @@ export default function CXResponseGenerator() {
   useEffect(() => {
     (async () => {
       const [t, h, p, jh] = await Promise.all([
-        loadJSON("cx-templates", []),
+        loadJSON("cx-templates", null),
         loadJSON("cx-history", []),
         loadJSON("cx-prefs", { aiEnabled: true, theme: "light" }),
         loadJSON("cx-jrsme-history", []),
       ]);
-      setTemplates(t);
+      const initialTemplates = (t && t.length > 0) ? t : DEFAULT_TEMPLATES;
+      setTemplates(initialTemplates);
+      if (!t || t.length === 0) {
+        saveJSON("cx-templates", DEFAULT_TEMPLATES);
+      }
       setHistory(h);
       setPrefs(p);
       setJrHistory(jh);
@@ -889,8 +1469,8 @@ export default function CXResponseGenerator() {
     setJrLoading(true);
     setJrAnswer(null);
     try {
-      const { text, sources } = await askJrSME({ query: jrQuery, appName: jrApp });
-      const result = { text, sources, mode: "search" };
+      const { text, sources, mode: answerMode } = await askJrSME({ query: jrQuery, appName: jrApp });
+      const result = { text, sources, mode: answerMode };
       setJrAnswer(result);
       const entry = { id: `jh_${Date.now()}`, timestamp: Date.now(), query: jrQuery, appName: jrApp, answer: text, sources };
       const nextHistory = [entry, ...jrHistory].slice(0, 15);
@@ -971,26 +1551,27 @@ export default function CXResponseGenerator() {
         .cx-root * { box-sizing: border-box; }
 
         .cx-theme-dark {
-          --bg: #0E0F16;
-          --blob-1: rgba(124,108,255,0.18);
-          --blob-2: rgba(255,138,107,0.10);
-          --panel: rgba(28,29,41,0.72);
-          --panel-solid: #1B1C28;
-          --field-bg: rgba(255,255,255,0.04);
+          --bg: #0D0E1A;
+          --blob-1: rgba(124,108,255,0.24);
+          --blob-2: rgba(255,138,107,0.14);
+          --panel: rgba(20,21,35,0.97);
+          --panel-solid: #171829;
+          --field-bg: rgba(255,255,255,0.08);
           --ink: #ECEBF5;
-          --ink-soft: #9997AC;
-          --hairline: rgba(255,255,255,0.10);
-          --hairline-soft: rgba(255,255,255,0.06);
+          --ink-soft: #9B99B0;
+          --hairline: rgba(255,255,255,0.13);
+          --hairline-soft: rgba(255,255,255,0.08);
           --accent: #9C8DFF;
           --accent-deep: #7C6BFF;
-          --accent-soft: rgba(156,141,255,0.16);
+          --accent-soft: rgba(156,141,255,0.22);
           --warm: #FF9478;
           --warm-deep: #FF8062;
-          --warm-soft: rgba(255,148,120,0.14);
+          --warm-soft: rgba(255,148,120,0.20);
           --teal: #3FDCB6;
-          --teal-soft: rgba(63,220,182,0.14);
+          --teal-soft: rgba(63,220,182,0.20);
           --danger: #FF6B6E;
-          --shadow-color: rgba(0,0,0,0.5);
+          --shadow-color: rgba(0,0,0,0.68);
+          color-scheme: dark;
         }
 
         .cx-shell { max-width: 1180px; margin: 0 auto; }
@@ -1111,8 +1692,21 @@ export default function CXResponseGenerator() {
           background: var(--accent-soft); padding:4px 10px; border-radius:999px;
         }
         .generated-response { font-family: Verdana, sans-serif; font-size: 10px; line-height: 1.5; text-align: justify; color: #000000; white-space: pre-wrap; background:#fff; border-radius:10px; padding:12px; }
-        .cx-theme-dark .generated-response { background:#F4F4F8; }
+        .cx-theme-dark .generated-response { background:#1E1F31; color:#ECEBF5; border:1px solid rgba(255,255,255,0.08); }
         .generated-response-edit { font-family: Verdana, sans-serif; font-size: 10px; line-height: 1.5; text-align: justify; color: #000000; width:100%; min-height:90px; border:1px solid var(--hairline); border-radius:10px; padding:12px; resize:vertical; background:#fff; }
+        .cx-theme-dark .generated-response-edit { background:#1E1F31; color:#ECEBF5; border-color:var(--hairline); }
+        .cx-theme-dark .cx-search-input { background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='14' height='14' fill='none' stroke='%239B99B0' stroke-width='2' viewBox='0 0 24 24'><circle cx='11' cy='11' r='8'/><line x1='21' y1='21' x2='16.65' y2='16.65'/></svg>"); }
+        .cx-theme-dark .cx-chip { color:var(--ink-soft); background:var(--field-bg); }
+        .cx-theme-dark .cx-tab { background:var(--panel-solid); }
+        .cx-theme-dark option { background-color: #171829; color: #ECEBF5; }
+        .cx-theme-dark .jr-card-summary { background: linear-gradient(135deg, rgba(156,141,255,0.14), #171829); border-color: rgba(156,141,255,0.32); }
+        .cx-theme-dark .jr-card-notes { background: linear-gradient(135deg, rgba(255,148,120,0.14), #171829); border-color: rgba(255,148,120,0.32); }
+        .cx-theme-dark .jr-card-customer { background: linear-gradient(135deg, rgba(63,220,182,0.14), #171829); border-color: rgba(63,220,182,0.32); }
+        .cx-theme-dark .jr-crumb { background: rgba(156,141,255,0.18); color: #C5BCFF; border-color: rgba(156,141,255,0.3); }
+        .cx-theme-dark .jr-step-row { background: rgba(255,255,255,0.04); border-color: rgba(255,255,255,0.08); }
+        .cx-theme-dark .jr-source-card { background: #171829; border-color: rgba(255,255,255,0.10); }
+        .cx-theme-dark .jr-source-card:hover { border-color: var(--accent); background: #1E2038; }
+
         .cx-card-actions { display:flex; gap:8px; margin-top:13px; flex-wrap:wrap; }
         .cx-card-btn { display:inline-flex; align-items:center; gap:5px; font-size:12px; font-weight:500; padding:6px 11px; border-radius:9px; border:1px solid var(--hairline); background:var(--panel-solid); color:var(--ink-soft); cursor:pointer; transition: all .15s; }
         .cx-card-btn:hover { border-color: var(--accent); color:var(--accent-deep); background: var(--accent-soft); }
@@ -1208,6 +1802,161 @@ export default function CXResponseGenerator() {
         @keyframes cx-splash-dot {
           0%, 80%, 100% { opacity: 0.3; transform: scale(0.85); }
           40%           { opacity: 1;   transform: scale(1.15); }
+        }
+
+        /* ---------- Jr SME Super Attractive Output Styles ---------- */
+        .jr-response-container {
+          display: flex; flex-direction: column; gap: 16px;
+          animation: jr-fade-in 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+        @keyframes jr-fade-in {
+          from { opacity: 0; transform: translateY(8px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+
+        .jr-response-header {
+          display: flex; align-items: center; justify-content: space-between;
+          flex-wrap: wrap; gap: 10px; margin-bottom: 4px;
+        }
+        .jr-badge-group { display: flex; align-items: center; gap: 8px; }
+        .jr-header-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+        .jr-customer-draft-btn {
+          background: linear-gradient(135deg, var(--teal-soft), var(--panel-solid));
+          border-color: var(--teal); color: var(--teal); font-weight: 600;
+        }
+        .jr-customer-draft-btn:hover {
+          background: var(--teal); color: #fff; border-color: var(--teal);
+        }
+
+        .jr-sections { display: flex; flex-direction: column; gap: 14px; }
+
+        .jr-section-card {
+          border: 1px solid var(--hairline);
+          border-radius: 16px;
+          padding: 18px 20px;
+          background: var(--panel-solid);
+          box-shadow: 0 10px 26px -20px var(--shadow-color);
+          transition: all 0.2s ease;
+        }
+        .jr-section-card:hover {
+          box-shadow: 0 16px 36px -18px var(--shadow-color);
+          border-color: var(--hairline);
+        }
+
+        .jr-card-summary {
+          background: linear-gradient(135deg, var(--accent-soft), var(--panel-solid));
+          border-color: rgba(108, 92, 231, 0.25);
+        }
+        .jr-card-steps {
+          border-left: 4px solid var(--accent);
+        }
+        .jr-card-notes {
+          background: linear-gradient(135deg, var(--warm-soft), var(--panel-solid));
+          border-color: rgba(255, 122, 89, 0.25);
+        }
+        .jr-card-customer {
+          background: linear-gradient(135deg, var(--teal-soft), var(--panel-solid));
+          border: 1px solid rgba(18, 150, 125, 0.3);
+          box-shadow: 0 12px 28px -18px rgba(18, 150, 125, 0.25);
+        }
+
+        .jr-section-title {
+          display: flex; align-items: center; gap: 8px;
+          font-family: 'Manrope', sans-serif; font-weight: 700; font-size: 15px;
+          color: var(--ink); margin-bottom: 12px;
+        }
+        .jr-sec-icon { color: var(--accent-deep); flex-shrink: 0; }
+        .jr-card-notes .jr-sec-icon { color: var(--warm-deep); }
+        .jr-card-customer .jr-sec-icon { color: var(--teal); }
+
+        .jr-section-body { display: flex; flex-direction: column; gap: 10px; font-size: 13.5px; line-height: 1.6; color: var(--ink); }
+
+        .jr-para { margin: 0; }
+
+        .jr-bold { color: var(--ink); font-weight: 700; }
+        .jr-code {
+          font-family: monospace; font-size: 12.5px; background: var(--accent-soft);
+          color: var(--accent-deep); padding: 2px 7px; border-radius: 6px;
+        }
+
+        .jr-nav-crumbs {
+          display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap;
+          margin: 2px 0;
+        }
+        .jr-crumb {
+          font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 6px;
+          background: var(--accent-soft); color: var(--accent-deep);
+          border: 1px solid rgba(108, 92, 231, 0.15);
+        }
+        .jr-crumb-arrow { font-size: 10px; color: var(--ink-soft); }
+
+        .jr-step-row {
+          display: flex; gap: 12px; align-items: flex-start;
+          padding: 8px 12px; border-radius: 12px; background: var(--field-bg);
+          border: 1px solid var(--hairline-soft);
+          transition: transform 0.15s;
+        }
+        .jr-step-row:hover { transform: translateX(2px); border-color: var(--hairline); }
+
+        .jr-step-badge {
+          width: 24px; height: 24px; border-radius: 50%;
+          background: linear-gradient(135deg, var(--accent), var(--accent-deep));
+          color: #fff; font-weight: 700; font-size: 12px;
+          display: flex; align-items: center; justify-content: center;
+          flex-shrink: 0; margin-top: 1px;
+          box-shadow: 0 4px 10px -4px var(--shadow-color);
+        }
+
+        .jr-bullet-row {
+          display: flex; gap: 10px; align-items: flex-start;
+          padding: 4px 6px;
+        }
+        .jr-bullet-dot {
+          width: 6px; height: 6px; border-radius: 50%;
+          background: var(--accent); margin-top: 8px; flex-shrink: 0;
+        }
+
+        .jr-sources-section {
+          margin-top: 10px; padding-top: 14px; border-top: 1px solid var(--hairline);
+        }
+        .jr-sources-title {
+          font-size: 12px; font-weight: 700; letter-spacing: 0.02em;
+          color: var(--ink-soft); text-transform: uppercase; margin-bottom: 12px;
+          display: flex; align-items: center; gap: 6px;
+        }
+        .jr-sources-grid {
+          display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px;
+        }
+        .jr-source-card {
+          display: flex; flex-direction: column; justify-content: space-between;
+          padding: 12px 14px; border-radius: 12px; border: 1px solid var(--hairline);
+          background: var(--panel-solid); text-decoration: none; color: inherit;
+          transition: all 0.18s ease; box-shadow: 0 6px 16px -14px var(--shadow-color);
+        }
+        .jr-source-card:hover {
+          border-color: var(--accent); transform: translateY(-2px);
+          box-shadow: 0 12px 24px -14px var(--shadow-color);
+        }
+        .jr-source-card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+        .jr-source-tag { font-size: 10px; font-weight: 700; color: var(--accent-deep); background: var(--accent-soft); padding: 2px 7px; border-radius: 999px; }
+        .jr-source-ext { color: var(--ink-soft); transition: color 0.15s; }
+        .jr-source-card:hover .jr-source-ext { color: var(--accent); }
+        .jr-source-title { font-weight: 600; font-size: 12.5px; color: var(--ink); line-height: 1.4; margin-bottom: 4px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+        .jr-source-url { font-size: 11px; color: var(--ink-soft); word-break: break-all; }
+
+        /* ---------- Skeleton Loader ---------- */
+        .jr-skeleton-container { display: flex; flex-direction: column; gap: 14px; padding: 10px 0; }
+        .jr-skeleton-header { display: flex; justify-content: space-between; }
+        .jr-skeleton-pill, .jr-skeleton-card {
+          border-radius: 14px;
+          background: linear-gradient(90deg, var(--hairline-soft) 25%, var(--hairline) 50%, var(--hairline-soft) 75%);
+          background-size: 200% 100%;
+          animation: jr-shimmer 1.5s infinite;
+        }
+        @keyframes jr-shimmer {
+          0% { background-position: 200% 0; }
+          100% { background-position: -200% 0; }
         }
       `}</style>
 
@@ -1481,29 +2230,9 @@ export default function CXResponseGenerator() {
               {!jrAnswer && !jrLoading && (
                 <div className="cx-empty">Ask a product question and Jr SME will look it up in Zoho's official help documentation.</div>
               )}
-              {jrLoading && <div className="cx-empty">Searching Zoho help documentation…</div>}
-              {jrAnswer && (
-                <div>
-                  <div className="cx-responses-header">
-                    <span className={`cx-mode-badge ${jrAnswer.mode === "search" ? "cx-mode-ai" : "cx-mode-template"}`}>
-                      <BookOpen size={12} /> {jrAnswer.mode === "search" ? "Grounded in Zoho Help" : "Reference Mode"}
-                    </span>
-                    <button className="cx-action-btn" onClick={() => handleCopy("jr-answer", jrAnswer.text)} type="button">
-                      {copiedId === "jr-answer" ? <Check size={14} /> : <Copy size={14} />} Copy
-                    </button>
-                  </div>
-                  <div className="jr-answer-text">{jrAnswer.text}</div>
-                  {jrAnswer.sources.length > 0 && (
-                    <div className="jr-sources">
-                      <div className="cx-field-label">Sources</div>
-                      {jrAnswer.sources.map((s, i) => (
-                        <a key={i} href={s.url} target="_blank" rel="noreferrer" className="jr-source-link">
-                          <ExternalLink size={12} /> {s.title || s.url}
-                        </a>
-                      ))}
-                    </div>
-                  )}
-                </div>
+              {jrLoading && <JrSMESkeleton />}
+              {jrAnswer && !jrLoading && (
+                <JrSMEResponseView answer={jrAnswer} />
               )}
             </div>
 

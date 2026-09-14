@@ -19,6 +19,9 @@ export default async function handler(req, res) {
     return;
   }
 
+  const body = { model: "openai/gpt-oss-120b", ...(req.body || {}) };
+  if (body.model === "llama-3.3-70b-versatile") body.model = "openai/gpt-oss-120b";
+
   try {
     const upstream = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
@@ -26,7 +29,7 @@ export default async function handler(req, res) {
         "Content-Type": "application/json",
         Authorization: `Bearer ${apiKey}`,
       },
-      body: JSON.stringify(req.body),
+      body: JSON.stringify(body),
     });
 
     const data = await upstream.json();
