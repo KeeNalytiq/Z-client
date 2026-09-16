@@ -3,7 +3,8 @@ import {
   Settings, Copy, Check, RefreshCw, Sparkles, FileStack, Search,
   Trash2, Pencil, X, Plus, Clock, ChevronDown, ChevronRight,
   Save, ClipboardList, History as HistoryIcon, Send, AlertCircle,
-  Sun, Moon, HeartHandshake, GraduationCap, ExternalLink, BookOpen
+  Sun, Moon, HeartHandshake, GraduationCap, ExternalLink, BookOpen,
+  FileCode2, Upload, Wand2, RotateCcw, ChevronUp
 } from "lucide-react";
 
 /* =========================================================================
@@ -443,22 +444,50 @@ function generateTemplateResponses(rawInput, situationChoice, tone, count) {
   const openerBank = OPENERS[role][tone] || OPENERS[role].Professional;
   const closerBank = CLOSERS[role][tone] || CLOSERS[role].Professional;
 
+  const GREETINGS = [
+    "Hope this email finds you well.",
+    "Hope you're doing well.",
+    "Hope this message finds you in good health.",
+    "Trust this email finds you well.",
+    "Hope all is well on your end.",
+  ];
+
+  const REACH_OUTS = [
+    "Please feel free to reach out to us if you have any questions or need further assistance.",
+    "Do not hesitate to contact us should you have any questions or require further help.",
+    "If you have any questions or need further clarification, please feel free to get in touch with us.",
+    "Should you need any additional assistance or have further questions, please don't hesitate to reach out.",
+  ];
+
+  const SIGN_OFFS = [
+    "Have a great day ahead!",
+    "Have a wonderful day!",
+    "Wishing you a great rest of your day!",
+    "Have a pleasant day ahead!",
+  ];
+
   const results = [];
   for (let i = 0; i < count; i++) {
-    // Paragraph 1: short opening line (email-style greeting/acknowledgement)
-    const openingPara = pick(openerBank, i).trim();
+    // Paragraph 1: warm greeting
+    const greetingPara = pick(GREETINGS, i);
 
-    // Paragraph 2: the main explanation, with any frustration/priority acknowledgement folded in
+    // Paragraph 2: concern acknowledgement
+    const openerPara = pick(openerBank, i).trim();
+
+    // Paragraph 3: the main body — frustration/priority prefix + situation body
     let bodyPara = "";
     if (ctx.frustrated) bodyPara += frustrationClause(tone);
     if (ctx.priority) bodyPara += priorityClause(tone);
     bodyPara += pick(bodyBank, i + Math.floor(i / bodyBank.length)).trim();
     bodyPara = bodyPara.replace(/\s+/g, " ").trim();
 
-    // Paragraph 3: closing line
-    const closingPara = pick(closerBank, i).trim();
+    // Paragraph 4: reach-out invitation
+    const reachOutPara = pick(REACH_OUTS, i);
 
-    const paragraphs = [openingPara, bodyPara, closingPara].filter(Boolean);
+    // Paragraph 5: warm sign-off
+    const signOffPara = pick(SIGN_OFFS, i);
+
+    const paragraphs = [greetingPara, openerPara, bodyPara, reachOutPara, signOffPara].filter(Boolean);
     results.push(paragraphs.join("\n\n"));
   }
   return results;
@@ -480,8 +509,15 @@ const RULES_TEXT = `You write customer-facing support responses for a SaaS suppo
 - Preserve exact product names and any exact navigation steps supplied by the user.
 - Do not invent troubleshooting steps.
 - Each variation must be noticeably different in wording while preserving the same meaning.
-- Format every response as a ready-to-send email body: a short opening line as its own paragraph, then one or two short explanation paragraphs, then a short closing line as its own paragraph. Separate paragraphs with a blank line (\\n\\n). No greeting name, no sign-off/signature, no subject line — just the body paragraphs. Example shape:
-"Thank you for your patience.\\n\\nWe are currently checking the reported concern with our concerned backend team to understand the issue in detail. We will share an update with you as soon as we receive further information from them.\\n\\nWe appreciate your patience and understanding while we work on this."`;
+- ALWAYS format every response using EXACTLY this 5-paragraph customer support engineer structure, with each paragraph separated by a blank line (\\n\\n):
+  Paragraph 1: A warm greeting line. e.g. "Hope this email finds you well." (vary phrasing slightly per variation)
+  Paragraph 2: Acknowledge the customer's concern. e.g. "We understand your concern regarding [specific issue from the notes]."
+  Paragraph 3: The solution, update, or information — professional, clear, and polite. One or two sentences. Include any steps or explanation relevant to the situation.
+  Paragraph 4: Invite further contact. e.g. "Please feel free to reach out to us if you have any questions or need further assistance."
+  Paragraph 5: A warm sign-off line. e.g. "Have a great day ahead!"
+- No greeting name, no agent signature, no subject line — just the 5 body paragraphs.
+- Example shape:
+"Hope this email finds you well.\\n\\nWe understand your concern regarding the delayed update on your case.\\n\\nWe are currently checking this with our concerned backend team and will share an update as soon as we receive further information.\\n\\nPlease feel free to reach out to us if you have any questions or need further assistance.\\n\\nHave a great day ahead!"`;
 
 async function generateWithAI({ input, situation, tone, count, excludeTexts = [] }) {
   const prompt = `${RULES_TEXT}
@@ -1608,7 +1644,7 @@ Instructions:
     <div className="jr-followup-container">
       <div className="jr-followup-header">
         <Sparkles size={16} className="jr-sec-icon" />
-        <span>Ask Follow-up Doubts & Request Code Clarifications (ChatGPT Style)</span>
+        <span>Ask Doubts</span>
       </div>
 
       {followUps.map((fu) => (
@@ -1663,6 +1699,180 @@ function JrSMESkeleton() {
       <div className="jr-skeleton-card" style={{ height: 110 }} />
     </div>
   );
+}
+
+/* =========================================================================
+   JSON READER HELPERS & CONSTANTS
+   ========================================================================= */
+
+const SAMPLE_TICKET_JSON = JSON.stringify({
+  "ticket_id": "TK-84920",
+  "subject": "Email sync failing on IMAP port 993",
+  "status": "Open",
+  "priority": "High",
+  "customer": {
+    "name": "Sarah Jenkins",
+    "email": "sarah.j@acme-corp.com",
+    "company": "Acme Corp",
+    "plan": "Enterprise"
+  },
+  "assigned_team": "L2 Email Infrastructure",
+  "tags": ["email", "imap", "authentication-failure"],
+  "metrics": {
+    "response_time_mins": 12,
+    "sla_breached": false,
+    "reopen_count": 0
+  }
+}, null, 2);
+
+const SAMPLE_CRM_JSON = JSON.stringify({
+  "event": "lead.created",
+  "source": "Zoho CRM Webhook",
+  "timestamp": "2026-09-16T00:10:00Z",
+  "data": {
+    "lead_id": "CRM-L-9031",
+    "first_name": "Michael",
+    "last_name": "Scott",
+    "email": "m.scott@dunder-mifflin.com",
+    "lead_score": 85,
+    "annual_revenue": 250000,
+    "is_qualified": true
+  }
+}, null, 2);
+
+function renderSyntaxHighlightedJson(jsonStr) {
+  if (!jsonStr) return null;
+  const lines = jsonStr.split("\n");
+
+  return (
+    <div className="cx-jr-code-container">
+      {lines.map((line, lineIdx) => {
+        const tokens = [];
+        let lastIndex = 0;
+        const regex = /("(\\u[a-fA-F0-9]{4}|\\[^u]|[^\\"])*")(\s*:)?|\b(true|false)\b|\bnull\b|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?|([{}[\],])/g;
+        let match;
+
+        while ((match = regex.exec(line)) !== null) {
+          if (match.index > lastIndex) {
+            tokens.push({ text: line.substring(lastIndex, match.index), type: "plain" });
+          }
+          const fullMatch = match[0];
+          const isKey = match[1] && match[3];
+
+          if (isKey) {
+            tokens.push({ text: match[1], type: "key" });
+            tokens.push({ text: match[3], type: "colon" });
+          } else if (match[1]) {
+            tokens.push({ text: match[1], type: "string" });
+          } else if (match[4]) {
+            tokens.push({ text: match[4], type: "boolean" });
+          } else if (fullMatch === "null") {
+            tokens.push({ text: fullMatch, type: "null" });
+          } else if (match[5]) {
+            tokens.push({ text: match[5], type: "punct" });
+          } else {
+            tokens.push({ text: fullMatch, type: "number" });
+          }
+          lastIndex = regex.lastIndex;
+        }
+
+        if (lastIndex < line.length) {
+          tokens.push({ text: line.substring(lastIndex), type: "plain" });
+        }
+
+        return (
+          <div key={lineIdx} className="cx-jr-code-line">
+            <span className="cx-jr-line-num">{lineIdx + 1}</span>
+            <span className="cx-jr-line-content">
+              {tokens.length > 0 ? (
+                tokens.map((t, idx) => (
+                  <span key={idx} className={`cx-tok-${t.type}`}>{t.text}</span>
+                ))
+              ) : (
+                " "
+              )}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function parseInlineMarkdown(str) {
+  if (!str) return [];
+  const parts = [];
+  let last = 0;
+  const regex = /(\*\*(.*?)\*\*|`([^`]+)`)/g;
+  let match;
+  while ((match = regex.exec(str)) !== null) {
+    if (match.index > last) {
+      parts.push(str.substring(last, match.index));
+    }
+    if (match[2] !== undefined) {
+      parts.push(<strong key={match.index} className="cx-jr-explain-bold">{match[2]}</strong>);
+    } else if (match[3] !== undefined) {
+      parts.push(<code key={match.index} className="cx-jr-explain-code">{match[3]}</code>);
+    }
+    last = regex.lastIndex;
+  }
+  if (last < str.length) {
+    parts.push(str.substring(last));
+  }
+  return parts;
+}
+
+function renderFormattedExplanation(text) {
+  if (!text) return null;
+  const lines = text.split("\n");
+
+  return lines.map((line, idx) => {
+    const trimmed = line.trim();
+    if (!trimmed) return <div key={idx} className="cx-jr-explain-spacer" />;
+
+    if (trimmed === "---" || trimmed === "***" || trimmed === "___") {
+      return <div key={idx} className="cx-jr-explain-divider" />;
+    }
+
+    const numberedHeaderMatch = trimmed.match(/^(?:####|###|##|#)?\s*([0-9]+)\.\s*(.*)/);
+
+    if (numberedHeaderMatch) {
+      const num = numberedHeaderMatch[1];
+      const titleText = numberedHeaderMatch[2].replace(/\*\*/g, "").trim();
+
+      return (
+        <div key={idx} className="cx-jr-explain-section-card">
+          <div className="cx-jr-explain-section-hdr">
+            <span className="cx-jr-explain-num-badge">{num}</span>
+            <span className="cx-jr-explain-section-title">{titleText}</span>
+          </div>
+        </div>
+      );
+    }
+
+    if (trimmed.startsWith("#### ") || trimmed.startsWith("### ") || trimmed.startsWith("## ") || trimmed.startsWith("# ")) {
+      const hText = trimmed.replace(/^#+\s*/, "");
+      return (
+        <h4 key={idx} className="cx-jr-explain-h4">{parseInlineMarkdown(hText)}</h4>
+      );
+    }
+
+    if (trimmed.startsWith("- ") || trimmed.startsWith("* ") || trimmed.startsWith("• ")) {
+      const content = trimmed.replace(/^[-*•]\s*/, "");
+      return (
+        <div key={idx} className="cx-jr-explain-bullet">
+          <span className="cx-jr-bullet-dot" />
+          <div className="cx-jr-bullet-text">{parseInlineMarkdown(content)}</div>
+        </div>
+      );
+    }
+
+    return (
+      <p key={idx} className="cx-jr-explain-p">
+        {parseInlineMarkdown(trimmed)}
+      </p>
+    );
+  });
 }
 
 /* =========================================================================
@@ -1926,6 +2136,123 @@ export default function CXResponseGenerator() {
     const next = { ...prefs, theme: prefs.theme === "dark" ? "light" : "dark" };
     setPrefs(next);
     await saveJSON("cx-prefs", next);
+  };
+
+  // ---- JSON Reader ----
+  const [jsonInput, setJsonInput] = useState("");
+  const [jsonFormatted, setJsonFormatted] = useState("");
+  const [jsonExplanation, setJsonExplanation] = useState("");
+  const [jsonError, setJsonError] = useState("");
+  const [jsonLoading, setJsonLoading] = useState(false);
+  const [jsonAutoFormat, setJsonAutoFormat] = useState(true);
+  const [jsonCopied, setJsonCopied] = useState(false);
+  const [jsonExplainCopied, setJsonExplainCopied] = useState(false);
+  const jsonFileRef = useRef(null);
+
+  const handleJsonFormat = useCallback((raw) => {
+    const src = raw !== undefined ? raw : jsonInput;
+    if (!src.trim()) { setJsonError("Please paste or upload a JSON file first."); return; }
+    try {
+      const parsed = JSON.parse(src.trim());
+      const pretty = JSON.stringify(parsed, null, 2);
+      setJsonFormatted(pretty);
+      setJsonError("");
+      return parsed;
+    } catch (e) {
+      setJsonError("Invalid JSON: " + e.message);
+      setJsonFormatted("");
+      return null;
+    }
+  }, [jsonInput]);
+
+  const handleJsonExplain = useCallback(async (raw) => {
+    const src = raw !== undefined ? raw : jsonInput;
+    if (!src.trim()) { setJsonError("Please paste or upload a JSON file first."); return; }
+    let parsed;
+    try { parsed = JSON.parse(src.trim()); } catch (e) { setJsonError("Invalid JSON: " + e.message); return; }
+    const pretty = JSON.stringify(parsed, null, 2);
+    setJsonFormatted(pretty);
+    setJsonError("");
+    setJsonLoading(true);
+    setJsonExplanation("");
+    try {
+      const prompt = `You are an expert data analyst and software engineer. A user has uploaded the following JSON file and wants to understand exactly what it contains — not just its shape, but what the actual data means.
+
+Read the JSON carefully and provide a thorough explanation that covers:
+
+1. **What this JSON is** — Identify what type of data this is (e.g. an API response, a config file, a record export, a webhook payload, a schema definition, etc.). Be specific based on the actual field names and values you see.
+
+2. **What the data contains** — Go through each top-level key and explain what it actually holds. Use the real values from the JSON to illustrate — for example, if there is a field "status": "active", say "The status field shows this record is currently active". If there are IDs, names, dates, counts, flags, URLs, or any meaningful values, describe them in plain English.
+
+3. **Nested objects and arrays** — For any nested objects or arrays, explain what each one represents and what its contents mean. If an array has items, describe what a typical item looks like and what the full list represents.
+
+4. **Key observations** — Point out anything notable: unusual values, empty fields, patterns, relationships between fields, data types that stand out, or anything that would help a non-technical person understand this data.
+
+5. **Likely use-case** — Based on everything you see, what is this JSON likely used for? Which system or product might have generated it?
+
+Write in plain English. Use short paragraphs or bullet points per section. Be specific — reference the actual field names and values from the JSON. Do NOT just describe structure abstractly. Do NOT repeat the JSON verbatim.
+
+JSON:
+${pretty.slice(0, 8000)}`;
+      const res = await fetch("/api/gemini", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "gemini-3.6-flash",
+          contents: [{ role: "user", parts: [{ text: prompt }] }],
+        }),
+      });
+      if (!res.ok) throw new Error("Explanation request failed");
+      const data = await res.json();
+      const parts = data.candidates?.[0]?.content?.parts || [];
+      const text = parts.map(p => p.text || "").join("").trim();
+      setJsonExplanation(text || "No explanation returned.");
+    } catch (err) {
+      setJsonError("Could not generate explanation: " + err.message);
+    } finally {
+      setJsonLoading(false);
+    }
+  }, [jsonInput]);
+
+  const handleJsonUpload = useCallback((e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const text = ev.target.result;
+      setJsonInput(text);
+      setJsonError("");
+      setJsonExplanation("");
+      if (jsonAutoFormat) {
+        try {
+          const pretty = JSON.stringify(JSON.parse(text.trim()), null, 2);
+          setJsonFormatted(pretty);
+        } catch (e) {
+          setJsonError("Invalid JSON: " + e.message);
+          setJsonFormatted("");
+        }
+      } else {
+        setJsonFormatted("");
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  }, [jsonAutoFormat]);
+
+  const handleJsonClear = () => {
+    setJsonInput(""); setJsonFormatted(""); setJsonExplanation(""); setJsonError(""); setJsonLoading(false);
+  };
+
+  const handleJsonCopy = () => {
+    navigator.clipboard.writeText(jsonFormatted || jsonInput).then(() => {
+      setJsonCopied(true); setTimeout(() => setJsonCopied(false), 1600);
+    });
+  };
+
+  const handleJsonExplainCopy = () => {
+    navigator.clipboard.writeText(jsonExplanation).then(() => {
+      setJsonExplainCopied(true); setTimeout(() => setJsonExplainCopied(false), 1600);
+    });
   };
 
   // ---- Jr SME ----
@@ -2598,6 +2925,7 @@ export default function CXResponseGenerator() {
         <div className="cx-tabs" style={{ marginBottom: 22 }}>
           <TabButton active={appView === "client"} onClick={() => setAppView("client")} icon={ClipboardList}>Client Response</TabButton>
           <TabButton active={appView === "jrsme"} onClick={() => setAppView("jrsme")} icon={GraduationCap}>Jr SME</TabButton>
+          <TabButton active={appView === "jsonreader"} onClick={() => setAppView("jsonreader")} icon={FileCode2}>JSON Reader</TabButton>
         </div>
 
         {appView === "client" && (
@@ -2877,6 +3205,188 @@ export default function CXResponseGenerator() {
           </div>
         </div>
         )}
+
+        {/* ===== JSON READER TAB ===== */}
+        {appView === "jsonreader" && (
+        <div className="cx-json-reader">
+          {/* Header */}
+          <div className="cx-jr-header">
+            <div className="cx-jr-header-left">
+              <div className="cx-jr-icon-wrap"><FileCode2 size={22} /></div>
+              <div>
+                <span className="cx-jr-title">JSON Reader & Inspector</span>
+                <p className="cx-jr-subtitle">Format messy JSON code with syntax highlighting and get instantaneous human-readable AI analysis.</p>
+              </div>
+            </div>
+            <div className="cx-jr-header-right">
+              <label className="cx-jr-toggle-row" htmlFor="jr-autoformat">
+                <span className="cx-jr-toggle-label">Auto-format on upload</span>
+                <div
+                  className={`cx-switch ${jsonAutoFormat ? "on" : ""}`}
+                  id="jr-autoformat"
+                  onClick={() => setJsonAutoFormat(v => !v)}
+                  role="switch"
+                  aria-checked={jsonAutoFormat}
+                  tabIndex={0}
+                  onKeyDown={e => (e.key === " " || e.key === "Enter") && setJsonAutoFormat(v => !v)}
+                />
+              </label>
+            </div>
+          </div>
+
+          {/* Full-width Stacked Blocks Layout */}
+          <div className="cx-jr-stacked-layout">
+            {/* Block 1: Input Panel */}
+            <div className="cx-panel cx-jr-input-panel">
+              <div className="cx-jr-input-toolbar">
+                <span className="cx-field-label" style={{ margin: 0 }}>Input JSON</span>
+                <div className="cx-jr-input-actions">
+                  <button
+                    className="cx-action-btn"
+                    type="button"
+                    onClick={() => jsonFileRef.current?.click()}
+                    title="Upload JSON file"
+                  >
+                    <Upload size={13} /> Upload .json
+                  </button>
+                  <input
+                    ref={jsonFileRef}
+                    type="file"
+                    accept=".json,application/json"
+                    style={{ display: "none" }}
+                    onChange={handleJsonUpload}
+                    id="jr-file-upload"
+                  />
+                  {jsonInput && (
+                    <button className="cx-action-btn" type="button" onClick={handleJsonClear} title="Clear">
+                      <RotateCcw size={13} /> Clear
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <textarea
+                className="cx-textarea cx-jr-textarea"
+                value={jsonInput}
+                onChange={e => {
+                  setJsonInput(e.target.value);
+                  setJsonError("");
+                  if (jsonAutoFormat && e.target.value.trim()) {
+                    try {
+                      setJsonFormatted(JSON.stringify(JSON.parse(e.target.value.trim()), null, 2));
+                    } catch { setJsonFormatted(""); }
+                  } else if (!e.target.value.trim()) {
+                    setJsonFormatted(""); setJsonExplanation("");
+                  }
+                }}
+                placeholder={`Paste your raw or compact JSON code here…\n\nExample:\n{\n  "ticket_id": "TK-84920",\n  "status": "Open"\n}`}
+                spellCheck={false}
+              />
+
+              {jsonError && (
+                <div className="cx-error"><AlertCircle size={14} />{jsonError}</div>
+              )}
+
+              <div className="cx-jr-btn-row">
+                <button
+                  className="cx-action-btn cx-jr-fmt-btn"
+                  type="button"
+                  onClick={() => handleJsonFormat()}
+                  disabled={!jsonInput.trim()}
+                >
+                  <Wand2 size={14} /> Pretty-Format JSON
+                </button>
+                <button
+                  className="cx-generate-btn cx-jr-explain-btn"
+                  type="button"
+                  onClick={() => handleJsonExplain()}
+                  disabled={jsonLoading || !jsonInput.trim()}
+                >
+                  {jsonLoading ? (
+                    <><RefreshCw size={15} className="cx-spin" /> Analysing Content…</>
+                  ) : (
+                    <><Sparkles size={15} /> Explain this JSON with AI</>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {/* Block 2: Formatted Output */}
+            {jsonFormatted && (
+              <div className="cx-panel cx-jr-output-panel">
+                <div className="cx-jr-code-header">
+                  <div className="cx-jr-mac-dots">
+                    <span className="cx-dot cx-dot-red" />
+                    <span className="cx-dot cx-dot-yellow" />
+                    <span className="cx-dot cx-dot-green" />
+                    <span className="cx-jr-file-title">formatted_output.json</span>
+                  </div>
+                  <div className="cx-jr-code-meta">
+                    <span className="cx-jr-meta-tag">{jsonFormatted.split("\n").length} lines</span>
+                    <span className="cx-jr-meta-tag">{(jsonFormatted.length / 1024).toFixed(1)} KB</span>
+                    <button className="cx-action-btn cx-jr-copy-btn" type="button" onClick={handleJsonCopy}>
+                      {jsonCopied ? <><Check size={13} /> Copied!</> : <><Copy size={13} /> Copy JSON</>}
+                    </button>
+                  </div>
+                </div>
+                <div className="cx-jr-code-wrapper">
+                  {renderSyntaxHighlightedJson(jsonFormatted)}
+                </div>
+              </div>
+            )}
+
+            {/* Block 3: AI Explanation Output */}
+            {(jsonExplanation || jsonLoading) && (
+              <div className="cx-panel cx-jr-explain-panel">
+                <div className="cx-jr-explain-header">
+                  <div className="cx-jr-explain-header-left">
+                    <div className="cx-jr-ai-badge-icon"><Sparkles size={16} /></div>
+                    <div>
+                      <span className="cx-jr-explain-title">AI Content Breakdown & Analysis</span>
+                      <span className="cx-jr-explain-sub">Deep understanding of field values & structure</span>
+                    </div>
+                  </div>
+                  {jsonExplanation && (
+                    <button className="cx-action-btn cx-jr-copy-btn" type="button" onClick={handleJsonExplainCopy}>
+                      {jsonExplainCopied ? <><Check size={13} /> Copied!</> : <><Copy size={13} /> Copy Analysis</>}
+                    </button>
+                  )}
+                </div>
+
+                {jsonLoading && !jsonExplanation ? (
+                  <div className="cx-jr-explain-loading">
+                    <div className="cx-jr-spinner-wrap">
+                      <RefreshCw size={22} className="cx-spin" style={{ color: "var(--accent)" }} />
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: 600, color: "var(--ink)" }}>Analyzing JSON data fields…</div>
+                      <div style={{ fontSize: 12.5, color: "var(--ink-soft)" }}>Gemini AI is examining values, nesting, types, and system usage.</div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="cx-jr-explain-body">
+                    {renderFormattedExplanation(jsonExplanation)}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Block when Empty */}
+            {!jsonFormatted && !jsonExplanation && !jsonLoading && (
+              <div className="cx-empty cx-jr-empty">
+                <div className="cx-jr-empty-icon-wrap">
+                  <FileCode2 size={26} />
+                </div>
+                <div className="cx-jr-empty-title">Ready to parse your JSON</div>
+                <p className="cx-jr-empty-desc">
+                  Paste raw JSON code above or upload a <code>.json</code> file — then click
+                  <strong> Pretty-Format JSON</strong> to format it, or <strong>Explain this JSON</strong> for AI analysis.
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
+        )}
       </div>
 
       {saveModal && (
@@ -2902,6 +3412,185 @@ export default function CXResponseGenerator() {
       <style>{`
         .cx-spin { animation: cx-spin 0.9s linear infinite; }
         @keyframes cx-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+        /* ===== JSON READER STYLES ===== */
+        .cx-json-reader { display: flex; flex-direction: column; gap: 20px; }
+
+        .cx-jr-header {
+          display: flex; align-items: center; justify-content: space-between;
+          flex-wrap: wrap; gap: 14px;
+          background: var(--panel); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+          border: 1px solid var(--hairline); border-radius: 18px; padding: 20px 24px;
+          box-shadow: 0 16px 36px -20px var(--shadow-color);
+        }
+        .cx-jr-header-left { display: flex; align-items: center; gap: 16px; }
+        .cx-jr-icon-wrap {
+          width: 48px; height: 48px; border-radius: 14px; flex-shrink: 0;
+          background: linear-gradient(135deg, #6C5CE7, #5642D6);
+          display: flex; align-items: center; justify-content: center; color: #fff;
+          box-shadow: 0 10px 24px -8px rgba(108, 92, 231, 0.45);
+        }
+        .cx-jr-title-row { display: flex; align-items: center; gap: 10px; }
+        .cx-jr-title { font-family: 'Manrope', sans-serif; font-weight: 800; font-size: 17px; color: var(--ink); }
+        .cx-jr-badge {
+          font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 12px;
+          background: linear-gradient(135deg, rgba(108, 92, 231, 0.15), rgba(86, 66, 214, 0.2));
+          color: var(--accent); border: 1px solid rgba(108, 92, 231, 0.3); text-transform: uppercase; letter-spacing: 0.5px;
+        }
+        .cx-jr-subtitle { font-size: 13px; color: var(--ink-soft); margin: 3px 0 0 0; line-height: 1.5; }
+        .cx-jr-header-right { display: flex; align-items: center; gap: 12px; }
+        .cx-jr-toggle-row { display: flex; align-items: center; gap: 10px; cursor: pointer; }
+        .cx-jr-toggle-label { font-size: 13px; color: var(--ink-soft); font-weight: 500; user-select: none; }
+
+        .cx-jr-stacked-layout { display: flex; flex-direction: column; gap: 20px; width: 100%; }
+
+        .cx-jr-input-panel { display: flex; flex-direction: column; gap: 14px; padding: 22px 24px; }
+        .cx-jr-input-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+        .cx-jr-input-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+        .cx-jr-textarea { min-height: 200px; font-family: 'Menlo', 'Monaco', 'Consolas', monospace; font-size: 12.5px; resize: vertical; line-height: 1.5; }
+
+        .cx-jr-btn-row { display: flex; flex-direction: row; gap: 12px; margin-top: 4px; }
+        @media (max-width: 640px) { .cx-jr-btn-row { flex-direction: column; } }
+        .cx-jr-fmt-btn { flex: 1; justify-content: center; padding: 11px 0; font-size: 13.5px; font-weight: 600; border-radius: 11px; }
+        .cx-jr-explain-btn { flex: 1.2; padding: 11px 0; font-size: 14px; font-weight: 700; border-radius: 11px; }
+        .cx-jr-fmt-btn:disabled { opacity: 0.45; cursor: default; }
+
+        .cx-jr-output-col { display: flex; flex-direction: column; gap: 20px; }
+
+        /* Code Output Box Styling (Terminal Window look) */
+        .cx-jr-output-panel {
+          padding: 0; overflow: hidden; border-radius: 16px;
+          background: #111827; border: 1px solid rgba(255, 255, 255, 0.12);
+          box-shadow: 0 20px 40px -20px rgba(0, 0, 0, 0.4);
+        }
+        .cx-jr-code-header {
+          display: flex; align-items: center; justify-content: space-between; gap: 12px;
+          background: #1F2937; padding: 12px 18px; border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        .cx-jr-mac-dots { display: flex; align-items: center; gap: 7px; }
+        .cx-dot { width: 11px; height: 11px; border-radius: 50%; display: inline-block; }
+        .cx-dot-red { background: #FF5F56; }
+        .cx-dot-yellow { background: #FFBD2E; }
+        .cx-dot-green { background: #27C93F; }
+        .cx-jr-file-title { font-family: 'Menlo', 'Monaco', monospace; font-size: 12px; color: #9CA3AF; margin-left: 8px; font-weight: 500; }
+
+        .cx-jr-code-meta { display: flex; align-items: center; gap: 10px; }
+        .cx-jr-meta-tag { font-size: 11px; font-family: 'Menlo', monospace; color: #6B7280; background: rgba(255,255,255,0.06); padding: 3px 8px; border-radius: 6px; }
+        .cx-jr-copy-btn { background: rgba(255,255,255,0.08); color: #E5E7EB; border: 1px solid rgba(255,255,255,0.12); font-size: 12px; padding: 5px 12px; border-radius: 8px; }
+        .cx-jr-copy-btn:hover { background: rgba(255,255,255,0.16); color: #FFF; }
+
+        .cx-jr-code-wrapper {
+          max-height: 440px; overflow: auto; padding: 14px 0;
+          font-family: 'JetBrains Mono', 'Fira Code', 'Menlo', 'Monaco', 'Consolas', monospace;
+          font-size: 12.5px; line-height: 1.6; color: #E2E8F0;
+        }
+        .cx-jr-code-wrapper::-webkit-scrollbar { width: 8px; height: 8px; }
+        .cx-jr-code-wrapper::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.15); border-radius: 4px; }
+        .cx-jr-code-wrapper::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.25); }
+
+        .cx-jr-code-container { display: flex; flex-direction: column; }
+        .cx-jr-code-line { display: flex; min-height: 22px; padding: 0 16px; }
+        .cx-jr-code-line:hover { background: rgba(255, 255, 255, 0.04); }
+        .cx-jr-line-num {
+          width: 38px; flex-shrink: 0; text-align: right; margin-right: 18px;
+          color: #475569; user-select: none; font-size: 11.5px; padding-right: 6px;
+          border-right: 1px solid rgba(255, 255, 255, 0.07);
+        }
+        .cx-jr-line-content { white-space: pre; word-break: break-all; flex: 1; }
+
+        /* Syntax Token Colors */
+        .cx-tok-key { color: #C084FC; font-weight: 600; }
+        .cx-tok-string { color: #34D399; }
+        .cx-tok-number { color: #FBBF24; }
+        .cx-tok-boolean { color: #60A5FA; font-weight: 600; }
+        .cx-tok-null { color: #F87171; font-weight: 600; }
+        .cx-tok-punct { color: #94A3B8; }
+        .cx-tok-colon { color: #94A3B8; }
+
+        /* AI Explanation Box Styling */
+        .cx-jr-explain-panel {
+          background: var(--panel); border: 1px solid var(--hairline); border-radius: 18px;
+          padding: 22px 24px; display: flex; flex-direction: column; gap: 18px;
+          box-shadow: 0 16px 36px -20px var(--shadow-color);
+        }
+        .cx-jr-explain-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+        .cx-jr-explain-header-left { display: flex; align-items: center; gap: 12px; }
+        .cx-jr-ai-badge-icon {
+          width: 36px; height: 36px; border-radius: 10px;
+          background: linear-gradient(135deg, #6C5CE7, #8B5CF6);
+          display: flex; align-items: center; justify-content: center; color: #fff;
+          box-shadow: 0 6px 16px -6px rgba(108, 92, 231, 0.4);
+        }
+        .cx-jr-explain-title { font-family: 'Manrope', sans-serif; font-weight: 800; font-size: 15px; color: var(--ink); display: block; }
+        .cx-jr-explain-sub { font-size: 12px; color: var(--ink-soft); display: block; margin-top: 1px; }
+
+        .cx-jr-explain-loading {
+          display: flex; align-items: center; gap: 14px; padding: 24px 16px;
+          background: rgba(108, 92, 231, 0.04); border-radius: 14px; border: 1px dashed rgba(108, 92, 231, 0.25);
+        }
+        .cx-jr-spinner-wrap {
+          width: 42px; height: 42px; border-radius: 50%; background: var(--accent-soft);
+          display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+        }
+
+        .cx-jr-explain-body { display: flex; flex-direction: column; gap: 10px; }
+        .cx-jr-explain-spacer { height: 6px; }
+        .cx-jr-explain-divider { height: 1px; background: var(--hairline); margin: 10px 0; opacity: 0.6; }
+
+        .cx-jr-explain-section-card { margin-top: 8px; margin-bottom: 2px; }
+        .cx-jr-explain-section-hdr {
+          display: flex; align-items: center; gap: 10px; padding: 8px 12px;
+          background: linear-gradient(90deg, rgba(108, 92, 231, 0.08), transparent);
+          border-left: 3px solid var(--accent); border-radius: 0 10px 10px 0;
+        }
+        .cx-jr-explain-num-badge {
+          width: 22px; height: 22px; border-radius: 50%;
+          background: var(--accent); color: #fff;
+          font-family: 'Manrope', sans-serif; font-weight: 800; font-size: 11px;
+          display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+        }
+        .cx-jr-explain-section-title { font-family: 'Manrope', sans-serif; font-weight: 800; font-size: 13.5px; color: var(--ink); letter-spacing: -0.2px; }
+
+        .cx-jr-explain-bullet { display: flex; align-items: flex-start; gap: 10px; padding-left: 12px; margin: 2px 0; }
+        .cx-jr-bullet-dot {
+          width: 6px; height: 6px; border-radius: 50%; background: var(--accent);
+          margin-top: 8px; flex-shrink: 0; opacity: 0.8;
+        }
+        .cx-jr-bullet-text { font-size: 13.5px; line-height: 1.6; color: var(--ink); flex: 1; }
+
+        .cx-jr-explain-p { font-size: 13.5px; line-height: 1.65; color: var(--ink); margin: 0; padding-left: 4px; }
+        .cx-jr-explain-h4 { font-family: 'Manrope', sans-serif; font-weight: 700; font-size: 13.5px; color: var(--accent); margin: 10px 0 4px 4px; }
+
+        .cx-jr-explain-bold { font-weight: 700; color: var(--ink); }
+        .cx-jr-explain-code {
+          font-family: 'Menlo', 'Monaco', monospace; font-size: 12px;
+          padding: 2px 6px; border-radius: 6px; background: rgba(108, 92, 231, 0.08);
+          color: var(--accent-deep); border: 1px solid rgba(108, 92, 231, 0.15);
+        }
+        .cx-theme-dark .cx-jr-explain-code { background: rgba(108, 92, 231, 0.2); color: #A78BFA; }
+
+        /* Empty state styling */
+        .cx-jr-empty {
+          padding: 48px 24px; text-align: center; display: flex; flex-direction: column; align-items: center;
+        }
+        .cx-jr-empty-icon-wrap {
+          width: 60px; height: 60px; border-radius: 18px;
+          background: var(--accent-soft); color: var(--accent);
+          display: flex; align-items: center; justify-content: center; margin-bottom: 16px;
+          box-shadow: 0 10px 24px -10px rgba(108, 92, 231, 0.3);
+        }
+        .cx-jr-empty-title { font-family: 'Manrope', sans-serif; font-weight: 800; font-size: 16px; color: var(--ink); margin-bottom: 6px; }
+        .cx-jr-empty-desc { font-size: 13px; color: var(--ink-soft); max-width: 360px; line-height: 1.6; margin-bottom: 20px; }
+        .cx-jr-empty-desc code { font-family: monospace; padding: 2px 5px; background: rgba(0,0,0,0.05); border-radius: 4px; }
+        .cx-jr-empty-pills { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+        .cx-jr-empty-pill-btn {
+          display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600;
+          padding: 8px 14px; border-radius: 10px; background: var(--panel); border: 1px solid var(--hairline);
+          color: var(--ink); cursor: pointer; transition: all 0.2s ease;
+          box-shadow: 0 4px 12px -4px var(--shadow-color);
+        }
+        .cx-jr-empty-pill-btn:hover { border-color: var(--accent); color: var(--accent); transform: translateY(-1px); }
       `}</style>
     </div>
   );
